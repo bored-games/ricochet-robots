@@ -20,9 +20,10 @@ defmodule RicochetRobots.MixProject do
 
   defp deps do
     [
-        {:cowboy, "~> 2.4"},
-        {:plug, "~> 1.7"},
-        {:plug_cowboy, "~>2.0"},
+      {:cowboy, "~> 2.4"},
+      {:plug, "~> 1.7"},
+      {:plug_cowboy, "~> 2.0"},
+      {:poison, "~> 3.1"},
     ]
   end
 end
