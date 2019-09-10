@@ -9,7 +9,7 @@ defmodule RicochetRobots.SocketHandler do
     {:cowboy_websocket, request, state}
   end
 
-  # Terminate if no activity for one minute--client should be sending pings.
+  # Terminate if no activity for 1.5 minutes--client should be sending pings.
   @timeout 90000
 
   @impl true
@@ -40,9 +40,9 @@ defmodule RicochetRobots.SocketHandler do
   end
 
   @impl true
-  def websocket_handle({:json, %{"action": "create_room"} = data, state) do
-    # Create a room, create the player, add player to state.
-    # Create and log to chat.
+  def websocket_handle({:json, %{"action": "create_room", "name": name}, state) do
+    RicochetRobots.RoomSupervisor.start_link(name)
+    RicochetRobots.Room.log_to_chat("Created room.")
   end
 
   @impl true

@@ -6,7 +6,7 @@ defmodule RicochetRobots.Game do
   ]
 
   def start_link() do
-    GenServer.start_link(__MODULE__, [])
+    GenServer.start_link(__MODULE__, [], __MODULE__)
   end
 
   @impl true
@@ -37,7 +37,10 @@ defmodule RicochetRobots.Game do
   end
 
   def check_solution(board, solution) do
-    # Pass to handle_call? IDK!
-    true
+    GenServer.cast(__MODULE__, {:check_solution, solution})
+  end
+
+  def handle_cast({:check_solution, solution}, state) do
+    # Solve it and broadcast results to sockets.
   end
 end
