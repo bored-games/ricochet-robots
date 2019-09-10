@@ -5,10 +5,6 @@ defmodule RicochetRobots.Router do
   plug :match
   plug :dispatch
 
-  get "/" do
-    send_resp(conn, 200, application_html())
-  end
-
   match _ do
     send_resp(conn, 404, "404")
   end
