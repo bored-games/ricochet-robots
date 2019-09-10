@@ -5,7 +5,7 @@ A multiplayer web-based implementation of ricochet-robots.
 ## License
 
 ```
-Copyright (C) 2019 azuline
+Copyright (C) 2019 azuline <azuline@riseup.net>
 Copyright (C) 2019 gg314
 
 This program is free software: you can redistribute it and/or modify
