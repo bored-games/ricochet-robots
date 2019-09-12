@@ -4,8 +4,7 @@ defmodule RicochetRobots.Room do
 
   defstruct name: nil,
             game: nil,
-            players: [],
-            value: "IDK",
+            users: [],
             chat: []
 
   def start_link(_opts) do
@@ -25,12 +24,20 @@ defmodule RicochetRobots.Room do
     Logger.debug("[Room: Created Game]")
   end
 
-  def add_player(player) do
-    GenServer.cast(__MODULE__, {:add_player, player})
+  def add_user(user) do
+    GenServer.cast(__MODULE__, {:add_user, user})
   end
 
-  def user_chat(registry_key, player, message) do
-    GenServer.cast(__MODULE__, {:user_chat, registry_key, player, message})
+  def remove_user(key) do
+    GenServer.cast(__MODULE__, {:remove_user, key})
+  end
+
+  def get_scoreboard(registry_key) do
+    GenServer.cast(__MODULE__, {:get_scoreboard, registry_key})
+  end
+
+  def user_chat(registry_key, user, message) do
+    GenServer.cast(__MODULE__, {:user_chat, registry_key, user, message})
   end
 
   def system_chat(registry_key, message) do
@@ -44,16 +51,20 @@ defmodule RicochetRobots.Room do
   end
 
   @impl true
-  def handle_cast({:add_player, player}, state) do
-    state = %{state | players: [player | state.players]}
-    {:noreply, state}
+  def handle_cast({:add_user, user}, state) do
+    {:noreply, %{state | users: [user | state.users]}}
   end
 
   @impl true
-  def handle_cast({:user_chat, registry_key, player, message}, state) do
-  #  Logger.debug("[User chat] <#{player}> #{message}")
+  def handle_cast({:remove_user, key}, state) do
+    users = Enum.filter(state.users, fn u -> u.unique_key != key end)
+    {:noreply, %{state | users: users}}
+  end
 
-    response = Poison.encode!( %{ content: %{ user: player, msg: message, kind: 0}, action: "update_chat" }  )
+  @impl true
+  def handle_cast({:get_scoreboard, registry_key}, state) do
+    Logger.debug("[Get scoreboard]")
+    response = Poison.encode!( %{ content: state.users, action: "update_scoreboard" }  )
 
     # send chat message to all
     Registry.RicochetRobots
@@ -63,7 +74,24 @@ defmodule RicochetRobots.Room do
       end
     end)
 
-  #  state = %{state | chat: ["<#{player}> #{message}" | state.chat]}
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:user_chat, registry_key, user, message}, state) do
+    Logger.debug("[User chat] <#{user.username}> #{message}")
+
+    response = Poison.encode!( %{ content: %{ user: user, msg: message, kind: 0}, action: "update_chat" }  )
+
+    # send chat message to all
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn(entries) ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+  #  state = %{state | chat: ["<#{user}> #{message}" | state.chat]}
     {:noreply, state}
   end
 

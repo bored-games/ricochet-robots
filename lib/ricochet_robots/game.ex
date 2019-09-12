@@ -80,19 +80,16 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def handle_call(:get_visual_board, _from, state) do
-    Logger.debug("Grabbed visual board.")
     {:reply, state.visual_board, state}
   end
 
   @impl true
   def handle_call(:get_robots, _from, state) do
-    Logger.debug("Grabbed robots.")
     {:reply, state.robots, state}
   end
 
   @impl true
   def handle_call(:get_goals, _from, state) do
-    Logger.debug("Grabbed goals.")
     {:reply, state.goals, state}
   end
 
@@ -273,7 +270,8 @@ defmodule RicochetRobots.Game do
     b = put_in b[8][7], 258
     b = put_in b[8][8], 259
 
-    { b, a, goals }
+    visual_board = for {_k, v} <- b, do: (for {_kk, vv} <- v, do: vv)
+    { visual_board, a, goals }
   end
 
   # Add L

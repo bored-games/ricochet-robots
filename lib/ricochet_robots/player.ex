@@ -4,7 +4,8 @@ defmodule RicochetRobots.Player do
             score: 0,
             is_admin: false,
             is_muted: false,
-            joined: nil
+            joined: nil,
+            unique_key: 0
 
   # TODO: take list of previous names and verify unique?
   @doc "Return a new user with unique, randomized name"

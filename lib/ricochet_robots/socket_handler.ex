@@ -8,25 +8,16 @@ defmodule RicochetRobots.SocketHandler do
   alias RicochetRobots.RoomSupervisor, as: RoomSupervisor
 
   # Terminate if no activity for 1.5 minutes--client should be sending pings.
-  @idle_timeout 90000
+  @idle_timeout 10000
 
   @impl true
   def init(request, _state) do
   #  { visual_board, boundary_board, goals } = build_board()
     state = %{
       registry_key: request.path,
-      player: %Player{ username: Player.generate_username(), color: Player.generate_color() },
-  #    visual_board: visual_board,
-  #    boundary_board: boundary_board,
-  #    robots: get_robots(),
-  #    goals: goals,
-      users: [ %{ username: "art", color: "#e0a85e", score: 16, owner: false, muted: false },
-      %{ username: "simon", color: "#95e05e", score: 25, owner: false, muted: false },
-      %{ username: "pete", color: "#5eb7e0", score: 50, owner: false, muted: true },
-      %{ username: "arlo", color: "#e05e9b", score: 8, owner: false, muted: false }]
-
-      }
-
+      player: %Player{ username: Player.generate_username(), color: Player.generate_color(), unique_key: Enum.random(1..1000000000000) }
+    }
+    Room.add_user(state.player)
     {:cowboy_websocket, request, state, %{ idle_timeout: @idle_timeout }}
   end
 
@@ -60,7 +51,6 @@ defmodule RicochetRobots.SocketHandler do
   @doc "ping : Message every 90 sec or the connection will be closed. Responds with pong."
   @impl true
   def websocket_handle({:json, "ping", _content}, state) do
-    Logger.debug("[Ping] ")
     response = Poison.encode!( %{ content: "pong", action: "ping" } )
     {:reply, {:text, response}, state}
   end
@@ -102,7 +92,6 @@ defmodule RicochetRobots.SocketHandler do
     vb = Game.get_board()
     robots = Game.get_robots()
     goals  = Game.get_goals()
-    vbf = for {_k, v} <- vb, do: (for {_kk, vv} <- v, do: vv)
 
     # users = [state[:player] | state[:users] ]
     # json_scoreboard = Poison.encode!( %{ content: users, action: "update_scoreboard" }  )
@@ -113,7 +102,7 @@ defmodule RicochetRobots.SocketHandler do
    # welcome_text = "Welcome to the game, " <> state[:player].username <> "!"
   #  json_welcome_message = Poison.encode!(%{content: %{ user: system_user, msg: welcome_text, kind: 1 }, action: "update_chat" })
 
-    json_board  = Poison.encode!(%{ action: "update_board", content: vbf } )
+    json_board  = Poison.encode!(%{ action: "update_board", content: vb } )
     json_robots = Poison.encode!(%{ action: "update_robots", content: robots } )
     json_goals  = Poison.encode!(%{ action: "update_goals", content: goals } )
 
@@ -132,6 +121,7 @@ defmodule RicochetRobots.SocketHandler do
     end)
 
     Room.system_chat(state.registry_key, new_user_text)
+    Room.get_scoreboard(state.registry_key)
 
     # send out user initialization info to client
     response = Poison.encode!( %{ content: state[:player], action: "update_user" }  )
@@ -202,8 +192,12 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, info}, state}
   end
 
-
-
+  @impl true
+  def terminate(_reason, _req, state) do
+    Room.remove_user(state.player.unique_key)
+    Room.get_scoreboard(state.registry_key)
+    :ok
+  end
 
 
 
