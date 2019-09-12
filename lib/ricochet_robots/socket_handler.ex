@@ -99,12 +99,11 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "create_user", _content}, state) do
     Logger.debug("[New user]: " <> state[:player].username)
-    {:reply, vb} = Game.get_board()
-    Logger.debug("WOOT")
-   # Logger.debug(vb.visual_board)
+    vb = Game.get_board()
     vbf = for {_k, v} <- vb, do: (for {_kk, vv} <- v, do: vv)
     json_board  = Poison.encode!(%{ action: "update_board", content: vbf } )
-    Room.log_to_chat("Created room.")
+
+
 
 
     # users = [state[:player] | state[:users] ]
@@ -120,8 +119,11 @@ defmodule RicochetRobots.SocketHandler do
 
     # test = for {_k, v} <- state[:visual_board], do: (for {_kk, vv} <- v, do: vv)
     # json_board  = Poison.encode!(%{ action: "update_board", content: test } )
-    # json_robots = Poison.encode!(%{ action: "update_robots", content: state[:robots] } )
-    # json_goals  = Poison.encode!(%{ action: "update_goals", content: state[:goals] } )
+
+    robots = Game.get_robots()
+    goals  = Game.get_goals()
+    json_robots = Poison.encode!(%{ action: "update_robots", content: robots } )
+    json_goals  = Poison.encode!(%{ action: "update_goals", content: goals } )
 
     Registry.RicochetRobots
     |> Registry.dispatch(state.registry_key, fn(entries) ->
@@ -131,13 +133,16 @@ defmodule RicochetRobots.SocketHandler do
       #    Process.send(pid, json_new_user_message, [])
         else
       #    Process.send(pid, json_scoreboard, [])
-          Process.send(pid, json_board, [])
-       #   Process.send(pid, json_robots, [])
-      #    Process.send(pid, json_goals, [])
+        Process.send(pid, json_board, [])
+        Process.send(pid, json_robots, [])
+        Process.send(pid, json_goals, [])
       #    Process.send(pid, json_welcome_message, [])
         end
       end
     end)
+
+
+    Room.log_to_chat("New user. . .")
 
     # send out user initialization info to client
     response = Poison.encode!( %{ content: state[:player], action: "update_user" }  )

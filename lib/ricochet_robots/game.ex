@@ -11,26 +11,34 @@ defmodule RicochetRobots.Game do
             timer: 0
 
   def start_link(_opts) do
-    Logger.debug("started game link")
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
   def init(_) do
-    Logger.debug("STARTED A GAME!!!")
-    { visual_board, boundary_board, goals } = build_board()
-    robots = get_robots()
+    Logger.debug("[Game: Started game]")
+    { visual_board, boundary_board, goals } = populate_board()
+    robots = populate_robots()
+    state = %__MODULE__{boundary_board: boundary_board, visual_board: visual_board, goals: goals, robots: robots}
 
-    {:ok, %__MODULE__{boundary_board: boundary_board, visual_board: visual_board, goals: goals, robots: robots}}
+    {:ok, state}
   end
 
   def new_game() do
-    Logger.debug("[game.ex: New game]")
+    Logger.debug("[Game: New game]")
+    GenServer.cast(__MODULE__, {:new_game})
   end
 
   def get_board() do
-    Logger.debug("Grabbing visual board.")
     GenServer.call(__MODULE__, :get_visual_board)
+  end
+
+  def get_robots() do
+    GenServer.call(__MODULE__, :get_robots)
+  end
+
+  def get_goals() do
+    GenServer.call(__MODULE__, :get_goals)
   end
 
   # def create_board() do
@@ -64,10 +72,28 @@ defmodule RicochetRobots.Game do
   end
 
   @impl true
+  def handle_cast({:new_game}, state) do
+    { visual_board, boundary_board, goals } = populate_board()
+    robots = populate_robots()
+    {:noreply, %{state | boundary_board: boundary_board, visual_board: visual_board, goals: goals, robots: robots}}
+  end
+
+  @impl true
   def handle_call(:get_visual_board, _from, state) do
     Logger.debug("Grabbed visual board.")
-    # state = %{state | chat: [message | state.chat]}
     {:reply, state.visual_board, state}
+  end
+
+  @impl true
+  def handle_call(:get_robots, _from, state) do
+    Logger.debug("Grabbed robots.")
+    {:reply, state.robots, state}
+  end
+
+  @impl true
+  def handle_call(:get_goals, _from, state) do
+    Logger.debug("Grabbed goals.")
+    {:reply, state.goals, state}
   end
 
 
@@ -102,8 +128,8 @@ defmodule RicochetRobots.Game do
 
 
   @doc "Return 5 robots in unique, random positions, avoiding the center 4 squares."
-  @spec get_robots() :: [ robot_t ]
-  def get_robots() do
+  @spec populate_robots() :: [ robot_t ]
+  def populate_robots() do
     robots = add_robot("red", [])
     robots = add_robot("green", robots)
     robots = add_robot("blue", robots)
@@ -120,8 +146,8 @@ defmodule RicochetRobots.Game do
   end
 
   @doc "Return a randomized boundary board, its visual map, and corresponding goal positions."
-  @spec build_board() :: { map, map, [ goal_t ] }
-  def build_board() do
+  @spec populate_board() :: { map, map, [ goal_t ] }
+  def populate_board() do
     goal_symbols = Enum.shuffle(["RedMoon","GreenMoon","BlueMoon","YellowMoon","RedPlanet","GreenPlanet","BluePlanet","YellowPlanet","GreenCross","RedCross","BlueCross","YellowCross","RedGear","GreenGear","BlueGear","YellowGear"])
     goal_active = Enum.shuffle([true,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false])
 

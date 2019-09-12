@@ -15,7 +15,7 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def init(_opts) do
-    Logger.debug("[Created Room]")
+    Logger.debug("[Room: Started Room]")
     new_room =  %__MODULE__{name: "Pizza House"}
     {:ok, new_room}
   end
@@ -34,7 +34,6 @@ defmodule RicochetRobots.Room do
   end
 
   def log_to_chat(message) do
-    Logger.debug(message)
     GenServer.cast(__MODULE__, {:log_to_chat, message})
   end
 
@@ -52,13 +51,14 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:send_message, {player, message}}, state) do
+    Logger.debug("[Send message] <#{player}> #{message}")
     state = %{state | chat: ["<#{player}> #{message}" | state.chat]}
     {:noreply, state}
   end
 
   @impl true
   def handle_cast({:log_to_chat, message}, state) do
-    Logger.debug(message)
+    Logger.debug("[Log to chat] #{message}")
     state = %{state | chat: [message | state.chat]}
     {:noreply, state}
   end
