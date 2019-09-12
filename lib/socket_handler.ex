@@ -299,18 +299,27 @@ defmodule RicochetRobots.SocketHandler do
     }
 
     # two | per board edge, with certain spaces avoided
-    a = put_in a[1][ Enum.random([4,6,8,10,12,14]) ], 1
-    a = put_in a[1][ Enum.random([18,20,22,24,26,28]) ], 1
-    a = put_in a[31][ Enum.random([4,6,8,10,12,14]) ], 1
-    a = put_in a[31][ Enum.random([18,20,22,24,26,28]) ], 1
-    a = put_in a[ Enum.random([4,6,8,10,12,14]) ][1], 1
-    a = put_in a[ Enum.random([18,20,22,24,26,28]) ][1], 1
-    a = put_in a[ Enum.random([4,6,8,10,12,14]) ][31], 1
-    a = put_in a[ Enum.random([18,20,22,24,26,28]) ][31], 1
+    v1 = Enum.random([4,6,8,10,12,14])
+    a = put_in a[1][ v1 ], 1
+    v2 = Enum.random([18,20,22,24,26,28])
+    a = put_in a[1][ v2 ], 1
+    v3 = Enum.random([4,6,8,10,12,14])
+    a = put_in a[31][ v3 ], 1
+    v4 = Enum.random([18,20,22,24,26,28])
+    a = put_in a[31][ v4 ], 1
+    v5 = Enum.random([4,6,8,10,12,14])
+    a = put_in a[ v5 ][1], 1
+    v6 = Enum.random([18,20,22,24,26,28])
+    a = put_in a[ v6 ][1], 1
+    v7 = Enum.random([4,6,8,10,12,14])
+    a = put_in a[ v7 ][31], 1
+    v8 = Enum.random([18,20,22,24,26,28])
+    a = put_in a[ v8 ][31], 1
 
     # TODO: ensure L's aren't too close to |'s?
     # four "L"s per quadrant
-    rlist = rand_distant_pairs([4, 6, 8, 10, 12, 14], [2, 4, 6, 8, 10, 12], [])
+    #rlist = rand_distant_pairs([4, 6, 8, 10, 12, 14], [2, 4, 6, 8, 10, 12], [ {v1, 0}, {v2, 0}, {v3, 32}, {v4, 32}, {0, v5}, {0, v6}, {32, v7}, {32, v8} ])
+    rlist = rand_distant_pairs([4, 6, 8, 10, 12, 14], [2, 4, 6, 8, 10, 12], [ {0, v1}, {0, v2}, {32, v3}, {32, v4}, {v5, 0}, {v6, 0}, {v7, 32}, {v8, 32} ])
     {a, goals} = add_L1(a, List.first(rlist), Enum.fetch!(goal_symbols, 0), Enum.fetch!(goal_active, 0), [] )
     rlist = rand_distant_pairs([2, 4, 6, 8, 10, 12], [2, 4, 6, 8, 10, 12], rlist)
     {a, goals} = add_L2(a, List.first(rlist), Enum.fetch!(goal_symbols, 1), Enum.fetch!(goal_active, 1), goals )
@@ -475,7 +484,7 @@ defmodule RicochetRobots.SocketHandler do
   @doc "Take {x1, y1} and {x2, y2}; is the distance between them more than 2.0 (on condensed board; 4.0 on boundary_board)?"
   @spec dist_under_2?({integer, integer}, {integer, integer}) :: boolean
   def dist_under_2?({x1, y1}, {x2, y2}) do
-    ((y1-y2)*(y1-y2) + (x1-x2)*(x1-x2)) <= 16.0
+    ((y1-y2)*(y1-y2) + (x1-x2)*(x1-x2)) <= 16.1 # HAHA I am using 16.1 not 16 because I like the resulting boards better.
   end
 
 end
