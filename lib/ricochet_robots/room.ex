@@ -33,7 +33,7 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:create_game}, state) do
-    game = GameSupervisor.start_link()
+    game = RicochetRobots.GameSupervisor.start_link("myrobots123")
     {:ok, Map.put(state, :game, game)}
   end
 

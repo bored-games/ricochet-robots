@@ -7,7 +7,18 @@ defmodule RicochetRobots.MixProject do
       version: "0.1.0",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+
+			# Docs
+			name: "Robots-Server",
+			source_url: "https://github.com/gg314/TODO",
+			homepage_url: "http://TODO.com",
+			docs: [
+				main: "Robots-Server", # The main page in the docs
+	#			logo: "path/to/logo.png",
+				extras: ["README.md"]
+      ]
+
     ]
   end
 
@@ -20,6 +31,7 @@ defmodule RicochetRobots.MixProject do
 
   defp deps do
     [
+      {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:cowboy, "~> 2.4"},
       {:plug, "~> 1.7"},
       {:plug_cowboy, "~> 2.0"},
