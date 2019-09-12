@@ -1,9 +1,7 @@
 defmodule RicochetRobots.Game do
   use GenServer
 
-  defstruct [
-    board: nil,
-  ]
+  defstruct board: nil
 
   def start_link() do
     GenServer.start_link(__MODULE__, [], __MODULE__)
@@ -11,20 +9,21 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def init(_) do
-    board = create_board()
-            |> populate_board()
+    board =
+      create_board()
+      |> populate_board()
 
-    {:ok, %Game{board: board}}
+    {:ok, %__MODULE__{board: board}}
   end
 
-  def create_board(rows, columns) do
+  def create_board() do
     # Board elements: nil, :robot, :vertical_wall, :horizontal_wall ?
 
-    board = %Board{}
-    for i <- 0..(rows - 1), do
-      board.board = Map.put(board.board, i, %{})
-      for j <- 0..(columns - 1), do
-        board.board[i] = Map.put(board.board[i], j, :nil)
+    board = %{}
+
+    for x <- 0..32 do
+      for y <- 0..32 do
+        board = Map.put(board, {x, y}, nil)
       end
     end
 
@@ -40,7 +39,9 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:check_solution, solution})
   end
 
+  @impl true
   def handle_cast({:check_solution, solution}, state) do
     # Solve it and broadcast results to sockets.
+    {:noreply, state}
   end
 end

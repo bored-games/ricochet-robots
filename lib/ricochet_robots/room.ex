@@ -1,20 +1,18 @@
 defmodule RicochetRobots.Room do
-  use Genserver
+  use GenServer
 
-  defstruct [
-    name: nil,
-    game: nil,
-    players: [],
-    chat: [],
-  ]
+  defstruct name: nil,
+            game: nil,
+            players: [],
+            chat: []
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
-  def init({name: name}) do
-    {:ok, %Room{id: 1, name: name}}
+  def init(name) do
+    {:ok, %__MODULE__{name: name}}
   end
 
   def create_game(name) do
@@ -35,25 +33,25 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:create_game}, state) do
-    game = RicochetRobots.GameSupervisor.start_link()
+    game = GameSupervisor.start_link()
     {:ok, Map.put(state, :game, game)}
   end
 
   @impl true
   def handle_cast({:add_player, player}, state) do
-    state.players = [ player | state.players ]
+    state = %{state | players: [player | state.players]}
     {:ok, state}
   end
 
   @impl true
-  def handle_cast({:send_message, {player, message}}) do
-    state.chat = [ "<#{player}> #{message}" | state.chat ]
+  def handle_cast({:send_message, {player, message}}, state) do
+    state = %{state | chat: ["<#{player}> #{message}" | state.chat]}
     {:ok, state}
   end
 
   @impl true
-  def handle_cast({:log_to_chat, message}) do
-    state.chat = [ message | state.chat ]
+  def handle_cast({:log_to_chat, message}, state) do
+    state = %{state | chat: [message | state.chat]}
     {:ok, state}
   end
 end

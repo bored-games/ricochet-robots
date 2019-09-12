@@ -5,12 +5,12 @@ defmodule RicochetRobots.SocketHandler do
 
   @impl true
   def init(request, _state) do
-    state = %{registry_key: request.path, player: %Player{}}
+    state = %{registry_key: request.path, player: %RicochetRobots.Player{}}
     {:cowboy_websocket, request, state}
   end
 
   # Terminate if no activity for 1.5 minutes--client should be sending pings.
-  @timeout 90000
+  @idle_timeout 90000
 
   @impl true
   def websocket_init(state) do
@@ -23,58 +23,59 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:text, message}, state) do
     data = Poison.decode!(message)
-    websocket_handle({:json, message}, state)
+    websocket_handle({:json, data}, state)
     {:ok, state}
   end
 
   @impl true
-  def websocket_handle({:json, {"action": "ping"}, state) do
+  def websocket_handle({:json, %{action: "ping"}}, state) do
     Logger.debug("ping pong")
     {:reply, {:text, "pong"}, state}
   end
 
   @impl true
-  def websocket_handle({:json, {"action": "set_nick", "nick": nick}, state) do
-    state.player = Map.put(state.player, :nickname, nick)
-    {:reply, {:text "success"}, state}
+  def websocket_handle({:json, %{action: "set_nick", nick: nick}}, state) do
+    state = update_in(state.player.nickname, nick)
+    {:reply, {:text, "success"}, state}
   end
 
   @impl true
-  def websocket_handle({:json, %{"action": "create_room", "name": name}, state) do
-    RicochetRobots.RoomSupervisor.start_link(name)
-    RicochetRobots.Room.log_to_chat("Created room.")
+  def websocket_handle({:json, %{action: "create_room", name: name}}, state) do
+    RoomSupervisor.start_link(name)
+    Room.log_to_chat("Created room.")
+    {:reply, {:text, "success"}, state}
   end
 
   @impl true
-  def websocket_handle({:json, %{"action": "join_room"}, state) do
+  def websocket_handle({:json, %{action: "join_room"}}, state) do
     # Create the player, have it join the room, add player to state.
     # Max # of players per game check?
-    # Log to chat.
+    Room.log_to_chat(state.player.name <> " joined the room.")
+    {:reply, {:text, "success"}, state}
   end
 
   @impl true
-  def websocket_handle({:json, %{"action": "new_game"}, state) do
-    # Create the board and randomize the setup; modify game state.
-    # Log to chat.
+  def websocket_handle({:json, %{action: "new_game"}}, state) do
+    Room.new_game()
+    Room.log_to_chat("New game started by #{state.player.name}.")
+    {:reply, {:text, "success"}, state}
   end
 
   @impl true
-  def websocket_handle({:json, %{"action": "submit_solution", "solution": solution}, state) do
-    # Check solution with solver
-    # Log submission and result to chat.
+  def websocket_handle({:json, %{action: "submit_solution", solution: solution}}, state) do
+    Game.submit_solution(solution)
+    Room.log_to_chat("Solution submitted by #{state.player.name}")
+    {:reply, {:text, "success"}, state}
   end
 
   @impl true
-  def websocket_handle({:json, %{"action": "send_chat_message", "message": message}, state) do
-    # Relay to chat.
+  def websocket_handle({:json, %{action: "send_chat_message", message: message}}, state) do
+    Room.send_message(state.player, message)
+    {:reply, {:text, "success"}, state}
   end
 
   @impl true
   def websocket_info(info, state) do
     {:reply, {:text, info}, state}
   end
-end
-
-defmodule Player do
-  defstruct nickname: nil
 end

@@ -8,7 +8,7 @@ defmodule RicochetRobots.GameSupervisor do
   @impl true
   def init(name) do
     children = [
-      %{id: RicochetRobots.Game, start: {Room, :start_link, name}}
+      %{id: Game, start: {Room, :start_link, name}}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
