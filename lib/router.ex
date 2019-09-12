@@ -2,15 +2,20 @@ defmodule RicochetRobots.Router do
   use Plug.Router
   require EEx
 
-  plug Plug.Static,
+  plug(Plug.Static,
     at: "/",
     from: :ricochet_robots
-  plug :match
-  plug Plug.Parsers,
+  )
+
+  plug(:match)
+
+  plug(Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
     json_decoder: Poison
-  plug :dispatch
+  )
+
+  plug(:dispatch)
 
   EEx.function_from_file(:defp, :application_html, "lib/application.html.eex", [])
 

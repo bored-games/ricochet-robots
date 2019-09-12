@@ -24,11 +24,10 @@ defmodule RicochetRobots do
   defp dispatch do
     [
       {:_,
-        [
-          {"/ws/[...]", RicochetRobots.SocketHandler, []},
-          {:_, Plug.Cowboy.Handler, {RicochetRobots.Router, []}}
-        ]
-      }
+       [
+         {"/ws/[...]", RicochetRobots.SocketHandler, []},
+         {:_, Plug.Cowboy.Handler, {RicochetRobots.Router, []}}
+       ]}
     ]
   end
 end
