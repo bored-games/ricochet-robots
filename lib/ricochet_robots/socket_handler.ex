@@ -72,39 +72,21 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "new_game", _content}, state) do
     Logger.debug("[New game] ")
-    Game.new_game()
-    Room.system_chat(state.registry_key, "New game started by #{state.player.name}.")
+    Game.new_game(state.registry_key)
+    Room.system_chat(state.registry_key, "New game started by #{state.player.username}.")
     {:reply, {:text, "success"}, state}
   end
 
 
-  # TODO: rewrite this when module hierarchy is sorted out!
+  # TODO: ONLY send board, goals, robots to the new user
   @doc "new_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
   @impl true
   def websocket_handle({:json, "create_user", _content}, state) do
     Logger.debug("[New user]: " <> state[:player].username)
-    vb = Game.get_board()
-    robots = Game.get_robots()
-    goals  = Game.get_goals()
 
-
-    json_board  = Poison.encode!(%{ action: "update_board", content: vb } )
-    json_robots = Poison.encode!(%{ action: "update_robots", content: robots } )
-    json_goals  = Poison.encode!(%{ action: "update_goals", content: goals } )
-
-    Registry.RicochetRobots
-    |> Registry.dispatch(state.registry_key, fn(entries) ->
-      for {pid, _} <- entries do
-    #    if pid != self() do
-      #    Process.send(pid, json_scoreboard, [])
-    #    else
-      #    Process.send(pid, json_scoreboard, [])
-          Process.send(pid, json_board, [])
-          Process.send(pid, json_robots, [])
-          Process.send(pid, json_goals, [])
-    #    end
-      end
-    end)
+    Game.broadcast_visual_board(state.registry_key)
+    Game.broadcast_robots(state.registry_key)
+    Game.broadcast_goals(state.registry_key)
 
     # TODO: seperate message for client that just joined?
     Room.system_chat(state.registry_key, state[:player].username <> " has joined the game.")
@@ -156,7 +138,6 @@ defmodule RicochetRobots.SocketHandler do
   @doc "Handle all other messages on their way out to clients."
   @impl true
   def websocket_info(info, state) do
-    IO.inspect(info)
     {:reply, {:text, info}, state}
   end
 

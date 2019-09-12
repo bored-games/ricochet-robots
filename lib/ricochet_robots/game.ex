@@ -24,9 +24,24 @@ defmodule RicochetRobots.Game do
     {:ok, state}
   end
 
-  def new_game() do
+  def new_game(registry_key) do
     Logger.debug("[Game: New game]")
     GenServer.cast(__MODULE__, {:new_game})
+    broadcast_visual_board(registry_key)
+    broadcast_robots(registry_key)
+    broadcast_goals(registry_key)
+  end
+
+  def broadcast_visual_board(registry_key) do
+    GenServer.cast(__MODULE__, {:broadcast_visual_board, registry_key})
+  end
+
+  def broadcast_robots(registry_key) do
+    GenServer.cast(__MODULE__, {:broadcast_robots, registry_key})
+  end
+
+  def broadcast_goals(registry_key) do
+    GenServer.cast(__MODULE__, {:broadcast_goals, registry_key})
   end
 
   def get_board() do
@@ -78,23 +93,53 @@ defmodule RicochetRobots.Game do
     {:noreply, %{state | boundary_board: boundary_board, visual_board: visual_board, goals: goals, robots: robots}}
   end
 
-  @impl true
-  def handle_call(:get_visual_board, _from, state) do
-    {:reply, state.visual_board, state}
-  end
 
   @impl true
-  def handle_call(:get_robots, _from, state) do
-    {:reply, state.robots, state}
+  def handle_cast({:broadcast_visual_board, registry_key}, state) do
+    Logger.debug("[Broadcast board]")
+    response = Poison.encode!( %{ content: state.visual_board, action: "update_board" }  )
+
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn(entries) ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+    {:noreply, state}
   end
+
 
   @impl true
-  def handle_call(:get_goals, _from, state) do
-    {:reply, state.goals, state}
+  def handle_cast({:broadcast_robots, registry_key}, state) do
+    Logger.debug("[Broadcast robots]")
+    response = Poison.encode!( %{ content: state.robots, action: "update_robots" }  )
+
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn(entries) ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+    {:noreply, state}
   end
 
 
+  @impl true
+  def handle_cast({:broadcast_goals, registry_key}, state) do
+    Logger.debug("[Broadcast goals]")
+    response = Poison.encode!( %{ content: state.goals, action: "update_goals" }  )
 
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn(entries) ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+    {:noreply, state}
+  end
 
 
 

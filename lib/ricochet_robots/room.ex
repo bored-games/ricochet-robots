@@ -66,7 +66,6 @@ defmodule RicochetRobots.Room do
     Logger.debug("[Get scoreboard]")
     response = Poison.encode!( %{ content: state.users, action: "update_scoreboard" }  )
 
-    # send chat message to all
     Registry.RicochetRobots
     |> Registry.dispatch(registry_key, fn(entries) ->
       for {pid, _} <- entries do
@@ -80,7 +79,6 @@ defmodule RicochetRobots.Room do
   @impl true
   def handle_cast({:user_chat, registry_key, user, message}, state) do
     Logger.debug("[User chat] <#{user.username}> #{message}")
-
     response = Poison.encode!( %{ content: %{ user: user, msg: message, kind: 0}, action: "update_chat" }  )
 
     # send chat message to all
@@ -91,7 +89,8 @@ defmodule RicochetRobots.Room do
       end
     end)
 
-  #  state = %{state | chat: ["<#{user}> #{message}" | state.chat]}
+    # TODO: log chat?
+    # state = %{state | chat: ["<#{user}> #{message}" | state.chat]}
     {:noreply, state}
   end
 
