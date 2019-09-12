@@ -1,7 +1,5 @@
 defmodule RicochetRobots do
-  @moduledoc """
-  Documentation for RicochetRobots.
-  """
+  use Application
 
   def start(_type, _args) do
     children = [
@@ -10,29 +8,27 @@ defmodule RicochetRobots do
         plug: RicochetRobots.Router,
         options: [
           dispatch: dispatch(),
-          port: 4000,
-        ],
+          port: 4000
+        ]
       ),
       Registry.child_spec(
         keys: :duplicate,
-        name: Registry.RicochetRobots,
-      ),
+        name: Registry.RicochetRobots
+      )
     ]
 
-    opts = [Strategy: :one_for_one, name: RicochetRobots.Application]
-
+    opts = [strategy: :one_for_one, name: RicochetRobots.Application]
     Supervisor.start_link(children, opts)
   end
 
-  def dispatch do
+  defp dispatch do
     [
-      {
-        :_,
+      {:_,
         [
           {"/ws/[...]", RicochetRobots.SocketHandler, []},
-          {:_, Plug.Cowboy.Handler, {RicochetRobots.Router, []}},
-        ],
-      },
+          {:_, Plug.Cowboy.Handler, {RicochetRobots.Router, []}}
+        ]
+      }
     ]
   end
 end
