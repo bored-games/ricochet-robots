@@ -19,8 +19,7 @@ defmodule RicochetRobots do
       )
     ]
 
-    opts = [Strategy: :one_for_one, name: RicochetRobots.Application]
-
+    opts = [strategy: :one_for_one, name: RicochetRobots.Application]
     Supervisor.start_link(children, opts)
   end
 
