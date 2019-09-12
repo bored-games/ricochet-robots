@@ -2,6 +2,7 @@ defmodule RicochetRobots.SocketHandler do
   @behaviour :cowboy_websocket
 
   require Logger
+  alias RicochetRobots.Player, as: Player
   alias RicochetRobots.Room, as: Room
   alias RicochetRobots.Game, as: Game
   alias RicochetRobots.RoomSupervisor, as: RoomSupervisor
@@ -14,7 +15,7 @@ defmodule RicochetRobots.SocketHandler do
   #  { visual_board, boundary_board, goals } = build_board()
     state = %{
       registry_key: request.path,
-      player: %RicochetRobots.Player{username: RicochetRobots.Player.generate_username()},
+      player: %Player{ username: Player.generate_username(), color: Player.generate_color() },
   #    visual_board: visual_board,
   #    boundary_board: boundary_board,
   #    robots: get_robots(),
@@ -31,7 +32,7 @@ defmodule RicochetRobots.SocketHandler do
 
 
   # system_user doesn't work?
-  # @system_user = %{username: "System", color: "#fff", score: 0, owner: false, muted: false}
+  # @system_user = %{username: "System", color: "#c6c6c6", score: 0, is_admin: false, is_muted: false}
 
   # TODO: visual_board (16x16 grid representing CSS squares) should be in parent module
   # TODO: boundary_board (33x33 grid representing open spaces and walls) should be in parent module
@@ -39,8 +40,8 @@ defmodule RicochetRobots.SocketHandler do
   # TODO: goal-symbols list should be in parent module.
   # TODO: users list should be in parent module AND somehow tied to registry to show active connections...
 
-  @impl true
   @doc "websocket_init: functions that must be called after init()"
+  @impl true
   def websocket_init(state) do
     Registry.RicochetRobots
     |> Registry.register(state.registry_key, {})
@@ -49,15 +50,15 @@ defmodule RicochetRobots.SocketHandler do
   end
 
   # TODO: if it is valid json, forward it along. Otherwise, handle the error
-  @impl true
   @doc "Route valid socket messages to other websocket_handle() functions"
+  @impl true
   def websocket_handle({:text, json}, state) do
     payload = Poison.decode!(json)
     websocket_handle({:json, payload["action"], payload["content"]}, state)
   end
 
-  @impl true
   @doc "ping : Message every 90 sec or the connection will be closed. Responds with pong."
+  @impl true
   def websocket_handle({:json, "ping", _content}, state) do
     Logger.debug("[Ping] ")
     response = Poison.encode!( %{ content: "pong", action: "ping" } )
@@ -67,7 +68,7 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, %{action: "create_room", name: name}}, state) do
     RoomSupervisor.start_link(name)
-    Room.log_to_chat("Created room.")
+    Room.system_chat(state.registry_key, "Created room.")
     {:reply, {:text, "success"}, state}
   end
 
@@ -75,7 +76,7 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, %{action: "join_room"}}, state) do
     # Create the player, have it join the room, add player to state.
     # Max # of players per game check?
-    Room.log_to_chat(state.player.name <> " joined the room.")
+    Room.system_chat(state.registry_key, state.player.name <> " joined the room.")
     {:reply, {:text, "success"}, state}
   end
 
@@ -84,7 +85,7 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "new_game", _content}, state) do
     Logger.debug("[New game] ")
     Game.new_game()
-    Room.log_to_chat("New game started by #{state.player.name}.")
+    Room.system_chat(state.registry_key, "New game started by #{state.player.name}.")
     {:reply, {:text, "success"}, state}
   end
 
@@ -94,55 +95,43 @@ defmodule RicochetRobots.SocketHandler do
 
 
   # TODO: rewrite this when module hierarchy is sorted out!
-  @doc "new_user : need to send out user initialization info to client,
-  and new user message, scoreboard to all users"
+  @doc "new_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
   @impl true
   def websocket_handle({:json, "create_user", _content}, state) do
     Logger.debug("[New user]: " <> state[:player].username)
     vb = Game.get_board()
+    robots = Game.get_robots()
+    goals  = Game.get_goals()
     vbf = for {_k, v} <- vb, do: (for {_kk, vv} <- v, do: vv)
-    json_board  = Poison.encode!(%{ action: "update_board", content: vbf } )
-
-
-
 
     # users = [state[:player] | state[:users] ]
     # json_scoreboard = Poison.encode!( %{ content: users, action: "update_scoreboard" }  )
 
-    # # send out users list to all
-    # # send out a system chat message
-    # system_user = %{username: "System", color: "#fff", score: 0, owner: false, muted: false}
-    # new_user_text = state[:player].username <> " has joined the game."
-    # json_new_user_message = Poison.encode!(%{content: %{ user: system_user, msg: new_user_text, kind: 1 }, action: "update_chat" })
-    # welcome_text = "Welcome to the game, " <> state[:player].username <> "!"
-    # json_welcome_message = Poison.encode!(%{content: %{ user: system_user, msg: welcome_text, kind: 1 }, action: "update_chat" })
+  #  system_user = %{username: "System", color: "#c6c6c6", score: 0, is_admin: false, is_muted: false}
+    new_user_text = state[:player].username <> " has joined the game."
+  #  json_new_user_message = Poison.encode!(%{content: %{ user: system_user, msg: new_user_text, kind: 1 }, action: "update_chat" })
+   # welcome_text = "Welcome to the game, " <> state[:player].username <> "!"
+  #  json_welcome_message = Poison.encode!(%{content: %{ user: system_user, msg: welcome_text, kind: 1 }, action: "update_chat" })
 
-    # test = for {_k, v} <- state[:visual_board], do: (for {_kk, vv} <- v, do: vv)
-    # json_board  = Poison.encode!(%{ action: "update_board", content: test } )
-
-    robots = Game.get_robots()
-    goals  = Game.get_goals()
+    json_board  = Poison.encode!(%{ action: "update_board", content: vbf } )
     json_robots = Poison.encode!(%{ action: "update_robots", content: robots } )
     json_goals  = Poison.encode!(%{ action: "update_goals", content: goals } )
 
     Registry.RicochetRobots
     |> Registry.dispatch(state.registry_key, fn(entries) ->
       for {pid, _} <- entries do
-        if pid != self() do
+    #    if pid != self() do
       #    Process.send(pid, json_scoreboard, [])
-      #    Process.send(pid, json_new_user_message, [])
-        else
+    #    else
       #    Process.send(pid, json_scoreboard, [])
-        Process.send(pid, json_board, [])
-        Process.send(pid, json_robots, [])
-        Process.send(pid, json_goals, [])
-      #    Process.send(pid, json_welcome_message, [])
-        end
+          Process.send(pid, json_board, [])
+          Process.send(pid, json_robots, [])
+          Process.send(pid, json_goals, [])
+    #    end
       end
     end)
 
-
-    Room.log_to_chat("New user. . .")
+    Room.system_chat(state.registry_key, new_user_text)
 
     # send out user initialization info to client
     response = Poison.encode!( %{ content: state[:player], action: "update_user" }  )
@@ -153,18 +142,10 @@ defmodule RicochetRobots.SocketHandler do
   @doc "new_chatline: need to send out new chatline to all users"
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
-    response = Poison.encode!( %{ content: content, action: "update_chat" }  )
-    Logger.debug("[Chatline] "<>content["user"]["username"]<>": " <> content["msg"])
+ #   response = Poison.encode!( %{ content: content, action: "update_chat" }  )
+ #   Logger.debug("[Chatline] "<>content["user"]["username"]<>": " <> content["msg"])
 
-    Room.send_message(state.player, content)
-
-    # send chat message to all
-    Registry.RicochetRobots
-    |> Registry.dispatch(state.registry_key, fn(entries) ->
-      for {pid, _} <- entries do
-        Process.send(pid, response, [])
-      end
-    end)
+    Room.user_chat(state.registry_key, state.player, content["msg"])
 
     {:reply, {:text, "success"}, state}
   end
@@ -231,13 +212,13 @@ defmodule RicochetRobots.SocketHandler do
 #   @impl true
 #   def websocket_handle({:json, %{action: "submit_solution", solution: solution}}, state) do
 #  #   Game.submit_solution(solution)
-#  #   Room.log_to_chat("Solution submitted by #{state.player.name}")
+#  #   Room.system_chat(state.registry_key, "Solution submitted by #{state.player.name}")
 #     {:reply, {:text, "success"}, state}
 #   end
 
 #   @impl true
 #   def websocket_handle({:json, %{action: "send_chat_message", message: message}}, state) do
-#     Room.send_message(state.player, message)
+#     Room.user_chat(state.registry_key, state.player, message)
 #     {:reply, {:text, "success"}, state}
 #   end
 
