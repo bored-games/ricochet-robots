@@ -5,6 +5,7 @@ defmodule RicochetRobots.Room do
   defstruct name: nil,
             game: nil,
             players: [],
+            value: "IDK",
             chat: []
 
   def start_link(_opts) do
@@ -13,13 +14,15 @@ defmodule RicochetRobots.Room do
   end
 
   @impl true
-  def init(name) do
+  def init(_opts) do
     Logger.debug("[Created Room]")
-    {:ok, %__MODULE__{name: name}}
+    new_room =  %__MODULE__{name: "Pizza House"}
+    {:ok, new_room}
   end
 
-  def create_game(name) do
-    GenServer.cast(__MODULE__, {:create_game, name})
+  def create_game() do
+    GenServer.cast(__MODULE__, {:create_game})
+    Logger.debug("[Room: Created Game]")
   end
 
   def add_player(player) do
@@ -37,26 +40,26 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:create_game}, state) do
-    game = RicochetRobots.GameSupervisor.start_link("myrobots123")
-    {:ok, Map.put(state, :game, game)}
+    game = RicochetRobots.GameSupervisor.start_link(RicochetRobots.GameSupervisor)
+    {:noreply, Map.put(state, :game, game)}
   end
 
   @impl true
   def handle_cast({:add_player, player}, state) do
     state = %{state | players: [player | state.players]}
-    {:ok, state}
+    {:noreply, state}
   end
 
   @impl true
   def handle_cast({:send_message, {player, message}}, state) do
     state = %{state | chat: ["<#{player}> #{message}" | state.chat]}
-    {:ok, state}
+    {:noreply, state}
   end
 
   @impl true
   def handle_cast({:log_to_chat, message}, state) do
     Logger.debug(message)
     state = %{state | chat: [message | state.chat]}
-    {:ok, state}
+    {:noreply, state}
   end
 end

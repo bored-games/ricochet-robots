@@ -17,6 +17,7 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def init(_) do
+    Logger.debug("STARTED A GAME!!!")
     { visual_board, boundary_board, goals } = build_board()
     robots = get_robots()
 
