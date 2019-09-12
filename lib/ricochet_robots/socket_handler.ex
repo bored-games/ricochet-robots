@@ -98,42 +98,42 @@ defmodule RicochetRobots.SocketHandler do
   and new user message, scoreboard to all users"
   @impl true
   def websocket_handle({:json, "create_user", _content}, state) do
-    Logger.debug("[New user]: " <> state[:user].username)
-    users = [state[:user] | state[:users] ]
-    json_scoreboard = Poison.encode!( %{ content: users, action: "update_scoreboard" }  )
+    Logger.debug("[New user]: " <> state[:player].username)
+    # users = [state[:player] | state[:users] ]
+    # json_scoreboard = Poison.encode!( %{ content: users, action: "update_scoreboard" }  )
 
-    # send out users list to all
-    # send out a system chat message
-    system_user = %{username: "System", color: "#fff", score: 0, owner: false, muted: false}
-    new_user_text = state[:user].username <> " has joined the game."
-    json_new_user_message = Poison.encode!(%{content: %{ user: system_user, msg: new_user_text, kind: 1 }, action: "update_chat" })
-    welcome_text = "Welcome to the game, " <> state[:user].username <> "!"
-    json_welcome_message = Poison.encode!(%{content: %{ user: system_user, msg: welcome_text, kind: 1 }, action: "update_chat" })
+    # # send out users list to all
+    # # send out a system chat message
+    # system_user = %{username: "System", color: "#fff", score: 0, owner: false, muted: false}
+    # new_user_text = state[:player].username <> " has joined the game."
+    # json_new_user_message = Poison.encode!(%{content: %{ user: system_user, msg: new_user_text, kind: 1 }, action: "update_chat" })
+    # welcome_text = "Welcome to the game, " <> state[:player].username <> "!"
+    # json_welcome_message = Poison.encode!(%{content: %{ user: system_user, msg: welcome_text, kind: 1 }, action: "update_chat" })
 
-    test = for {_k, v} <- state[:visual_board], do: (for {_kk, vv} <- v, do: vv)
-    json_board  = Poison.encode!(%{ action: "update_board", content: test } )
-    json_robots = Poison.encode!(%{ action: "update_robots", content: state[:robots] } )
-    json_goals  = Poison.encode!(%{ action: "update_goals", content: state[:goals] } )
+    # test = for {_k, v} <- state[:visual_board], do: (for {_kk, vv} <- v, do: vv)
+    # json_board  = Poison.encode!(%{ action: "update_board", content: test } )
+    # json_robots = Poison.encode!(%{ action: "update_robots", content: state[:robots] } )
+    # json_goals  = Poison.encode!(%{ action: "update_goals", content: state[:goals] } )
 
-    Registry.RicochetRobots
-    |> Registry.dispatch(state.registry_key, fn(entries) ->
-      for {pid, _} <- entries do
-        if pid != self() do
-          Process.send(pid, json_scoreboard, [])
-          Process.send(pid, json_new_user_message, [])
-        else
-          Process.send(pid, json_scoreboard, [])
-          Process.send(pid, json_board, [])
-          Process.send(pid, json_robots, [])
-          Process.send(pid, json_goals, [])
+    # Registry.RicochetRobots
+    # |> Registry.dispatch(state.registry_key, fn(entries) ->
+    #   for {pid, _} <- entries do
+    #     if pid != self() do
+    #       Process.send(pid, json_scoreboard, [])
+    #       Process.send(pid, json_new_user_message, [])
+    #     else
+    #       Process.send(pid, json_scoreboard, [])
+    #       Process.send(pid, json_board, [])
+    #       Process.send(pid, json_robots, [])
+    #       Process.send(pid, json_goals, [])
 
-          Process.send(pid, json_welcome_message, [])
-        end
-      end
-    end)
+    #       Process.send(pid, json_welcome_message, [])
+    #     end
+    #   end
+    # end)
 
     # send out user initialization info to client
-    response = Poison.encode!( %{ content: state[:user], action: "update_user" }  )
+    response = Poison.encode!( %{ content: state[:player], action: "update_user" }  )
     {:reply, {:text, response}, state}
   end
 
@@ -162,9 +162,9 @@ defmodule RicochetRobots.SocketHandler do
   @doc "update_user : need to send validated user info to 1 client and new scoreboard to all"
   @impl true
   def websocket_handle({:json, "update_user", content}, state) do
-    Logger.debug("[Update user] " <> state[:user].username <> " --> " <> content["username"])
+    Logger.debug("[Update user] " <> state[:player].username <> " --> " <> content["username"])
 
-    old_user = state[:user]
+    old_user = state[:player]
     new_username = if String.trim( content["username"] ) != "" do String.trim( content["username"] ) else old_user.username end
     new_color = if String.trim( content["color"] ) != "" do String.trim( content["color"] ) else old_user.color end
     new_user = %{old_user | username: new_username, color: new_color}
@@ -174,7 +174,7 @@ defmodule RicochetRobots.SocketHandler do
     Registry.RicochetRobots
     |> Registry.dispatch(state.registry_key, fn(entries) ->
       for {pid, _} <- entries do
-        users = [new_state[:user] | new_state[:users] ]
+        users = [new_state[:player] | new_state[:users] ]
         response = Poison.encode!( %{ content: users, action: "update_scoreboard" }  )
         Process.send(pid, response, [])
       end
