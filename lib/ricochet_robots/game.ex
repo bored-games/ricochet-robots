@@ -10,8 +10,9 @@ defmodule RicochetRobots.Game do
             countdown: 60,
             timer: 0
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, [], __MODULE__)
+  def start_link(_opts) do
+    Logger.debug("started game link")
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
@@ -19,12 +20,16 @@ defmodule RicochetRobots.Game do
     { visual_board, boundary_board, goals } = build_board()
     robots = get_robots()
 
-
     {:ok, %__MODULE__{boundary_board: boundary_board, visual_board: visual_board, goals: goals, robots: robots}}
   end
 
   def new_game() do
     Logger.debug("[game.ex: New game]")
+  end
+
+  def get_board() do
+    Logger.debug("Grabbing visual board.")
+    GenServer.call(__MODULE__, :get_visual_board)
   end
 
   # def create_board() do
@@ -50,26 +55,19 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:check_solution, solution})
   end
 
+
   @impl true
   def handle_cast({:check_solution, _solution}, state) do
     # Solve it and broadcast results to sockets.
     {:noreply, state}
   end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  @impl true
+  def handle_call(:get_visual_board, _from, state) do
+    Logger.debug("Grabbed visual board.")
+    # state = %{state | chat: [message | state.chat]}
+    {:reply, state.visual_board, state}
+  end
 
 
 
@@ -351,27 +349,6 @@ defmodule RicochetRobots.Game do
   def dist_under_2?({x1, y1}, {x2, y2}) do
     ((y1-y2)*(y1-y2) + (x1-x2)*(x1-x2)) <= 16.1 # HAHA I am using 16.1 not 16 because I like the resulting boards better.
   end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

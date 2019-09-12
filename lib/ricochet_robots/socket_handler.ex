@@ -99,6 +99,14 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "create_user", _content}, state) do
     Logger.debug("[New user]: " <> state[:player].username)
+    {:reply, vb} = Game.get_board()
+    Logger.debug("WOOT")
+   # Logger.debug(vb.visual_board)
+    vbf = for {_k, v} <- vb, do: (for {_kk, vv} <- v, do: vv)
+    json_board  = Poison.encode!(%{ action: "update_board", content: vbf } )
+    Room.log_to_chat("Created room.")
+
+
     # users = [state[:player] | state[:users] ]
     # json_scoreboard = Poison.encode!( %{ content: users, action: "update_scoreboard" }  )
 
@@ -115,22 +123,21 @@ defmodule RicochetRobots.SocketHandler do
     # json_robots = Poison.encode!(%{ action: "update_robots", content: state[:robots] } )
     # json_goals  = Poison.encode!(%{ action: "update_goals", content: state[:goals] } )
 
-    # Registry.RicochetRobots
-    # |> Registry.dispatch(state.registry_key, fn(entries) ->
-    #   for {pid, _} <- entries do
-    #     if pid != self() do
-    #       Process.send(pid, json_scoreboard, [])
-    #       Process.send(pid, json_new_user_message, [])
-    #     else
-    #       Process.send(pid, json_scoreboard, [])
-    #       Process.send(pid, json_board, [])
-    #       Process.send(pid, json_robots, [])
-    #       Process.send(pid, json_goals, [])
-
-    #       Process.send(pid, json_welcome_message, [])
-    #     end
-    #   end
-    # end)
+    Registry.RicochetRobots
+    |> Registry.dispatch(state.registry_key, fn(entries) ->
+      for {pid, _} <- entries do
+        if pid != self() do
+      #    Process.send(pid, json_scoreboard, [])
+      #    Process.send(pid, json_new_user_message, [])
+        else
+      #    Process.send(pid, json_scoreboard, [])
+          Process.send(pid, json_board, [])
+       #   Process.send(pid, json_robots, [])
+      #    Process.send(pid, json_goals, [])
+      #    Process.send(pid, json_welcome_message, [])
+        end
+      end
+    end)
 
     # send out user initialization info to client
     response = Poison.encode!( %{ content: state[:player], action: "update_user" }  )

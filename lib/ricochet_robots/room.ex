@@ -1,5 +1,6 @@
 defmodule RicochetRobots.Room do
   use GenServer
+  require Logger
 
   defstruct name: nil,
             game: nil,
@@ -7,11 +8,13 @@ defmodule RicochetRobots.Room do
             chat: []
 
   def start_link(_opts) do
+    Logger.debug("started room link")
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
   def init(name) do
+    Logger.debug("[Created Room]")
     {:ok, %__MODULE__{name: name}}
   end
 
@@ -28,6 +31,7 @@ defmodule RicochetRobots.Room do
   end
 
   def log_to_chat(message) do
+    Logger.debug(message)
     GenServer.cast(__MODULE__, {:log_to_chat, message})
   end
 
@@ -51,6 +55,7 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:log_to_chat, message}, state) do
+    Logger.debug(message)
     state = %{state | chat: [message | state.chat]}
     {:ok, state}
   end

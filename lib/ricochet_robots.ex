@@ -16,6 +16,9 @@ defmodule RicochetRobots do
       Registry.child_spec(
         keys: :duplicate,
         name: Registry.RicochetRobots
+      ),
+      RicochetRobots.RoomSupervisor.child_spec(
+        name: RicochetRobots.RoomSupervisor
       )
     ]
 
