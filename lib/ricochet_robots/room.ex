@@ -32,8 +32,8 @@ defmodule RicochetRobots.Room do
     GenServer.cast(__MODULE__, {:remove_user, key})
   end
 
-  def get_scoreboard(registry_key) do
-    GenServer.cast(__MODULE__, {:get_scoreboard, registry_key})
+  def broadcast_scoreboard(registry_key) do
+    GenServer.cast(__MODULE__, {:broadcast_scoreboard, registry_key})
   end
 
   def user_chat(registry_key, user, message) do
@@ -62,7 +62,7 @@ defmodule RicochetRobots.Room do
   end
 
   @impl true
-  def handle_cast({:get_scoreboard, registry_key}, state) do
+  def handle_cast({:broadcast_scoreboard, registry_key}, state) do
     Logger.debug("[Get scoreboard]")
     response = Poison.encode!( %{ content: state.users, action: "update_scoreboard" }  )
 

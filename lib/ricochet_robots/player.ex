@@ -12,9 +12,9 @@ defmodule RicochetRobots.Player do
   def generate_username() do
     # Make it extremely unlikely for nicknames to collide...
     # have a few million permutations please!
-    arr1 = ["Robot", "Doctor", "Puzzle", "Automata", "Buzz", "Data", "Buzz", "Zap", "Infinity", "Cyborg", "Android", "Electro", "Robo", "Battery", "Beep" ];
-    arr2 = ["Lover", "Love", "Power", "Clicker", "Friend", "Zap", "Zip", "Zapper", "Genius", "Beep", "Boop", "Sim", "Asimov", "Talos" ];
-    arr3 = ["69", "420", "XxX", "2001", "", "", "", "", "", "", "", "", ""];
+    arr1 = ["Robot", "Bio", "Doctor", "Puzzle", "Automata", "Buzz", "Data", "Buzz", "Zap", "Infinity", "Cyborg", "Android", "Electro", "Robo", "Battery", "Beep" ];
+    arr2 = ["Lover", "Love", "Power", "nic", "Servo", "", "Clicker", "Friend", "Zap", "Zip", "Zapper", "Genius", "Beep", "Boop", "Sim", "Asimov", "Talos" ];
+    arr3 = ["69", "420", "XxX", "2001", "borg", "9000", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
     Enum.random(arr1) <> Enum.random(arr2) <> Enum.random(arr3)
   end
 
