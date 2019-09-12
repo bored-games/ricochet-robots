@@ -5,7 +5,11 @@ defmodule RicochetRobots.SocketHandler do
 
   @impl true
   def init(request, _state) do
-    state = %{registry_key: request.path, player: %RicochetRobots.Player{}}
+    state = %{
+      registry_key: request.path,
+      player: %RicochetRobots.Player{name: RicochetRobots.Player.generate_name()}
+    }
+
     {:cowboy_websocket, request, state}
   end
 
@@ -31,12 +35,6 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, %{action: "ping"}}, state) do
     Logger.debug("ping pong")
     {:reply, {:text, "pong"}, state}
-  end
-
-  @impl true
-  def websocket_handle({:json, %{action: "set_nick", nick: nick}}, state) do
-    state = update_in(state.player.nickname, nick)
-    {:reply, {:text, "success"}, state}
   end
 
   @impl true
