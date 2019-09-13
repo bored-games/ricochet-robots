@@ -10,10 +10,11 @@ defmodule RicochetRobots.RoomSupervisor do
   @impl true
   def init(name) do
     children = [
-      %{ id: RicochetRobots.Room,
-         start: {RicochetRobots.Room, :start_link, name}
-    #     restart: :temporary # DO NOT revive dead rooms, for now.
-        }
+      %{
+        id: RicochetRobots.Room,
+        start: {RicochetRobots.Room, :start_link, name}
+        #     restart: :temporary # DO NOT revive dead rooms, for now.
+      }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

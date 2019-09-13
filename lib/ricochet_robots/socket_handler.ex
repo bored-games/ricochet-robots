@@ -15,12 +15,16 @@ defmodule RicochetRobots.SocketHandler do
   def init(request, _state) do
     state = %{
       registry_key: request.path,
-      player: %Player{ username: Player.generate_username(), color: Player.generate_color(), unique_key: Enum.random(1..1000000000000) }
+      player: %Player{
+        username: Player.generate_username(),
+        color: Player.generate_color(),
+        unique_key: Enum.random(1..1_000_000_000_000)
+      }
     }
-    Room.add_user(state.player)
-    {:cowboy_websocket, request, state, %{ idle_timeout: @idle_timeout }}
-  end
 
+    Room.add_user(state.player)
+    {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
+  end
 
   @doc "websocket_init: functions that must be called after init()"
   @impl true
@@ -31,7 +35,6 @@ defmodule RicochetRobots.SocketHandler do
     {:ok, state}
   end
 
-
   # TODO: if it is valid json, forward it along. Otherwise, handle the error
   @doc "Route valid socket messages to other websocket_handle() functions"
   @impl true
@@ -40,11 +43,10 @@ defmodule RicochetRobots.SocketHandler do
     websocket_handle({:json, payload["action"], payload["content"]}, state)
   end
 
-
   @doc "Ping : Message every 90 sec or the connection will be closed. Responds with pong."
   @impl true
   def websocket_handle({:json, "ping", _content}, state) do
-    response = Poison.encode!( %{ content: "pong", action: "ping" } )
+    response = Poison.encode!(%{content: "pong", action: "ping"})
     {:reply, {:text, response}, state}
   end
 
@@ -57,7 +59,6 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, "success"}, state}
   end
 
-
   # TODO: reconsider this functionality
   @impl true
   def websocket_handle({:json, %{action: "join_room"}}, state) do
@@ -67,7 +68,6 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, "success"}, state}
   end
 
-
   @doc "new_game : need to send out new board, robots, goals"
   @impl true
   def websocket_handle({:json, "new_game", _content}, state) do
@@ -76,7 +76,6 @@ defmodule RicochetRobots.SocketHandler do
     Room.system_chat(state.registry_key, "New game started by #{state.player.username}.")
     {:reply, {:text, "success"}, state}
   end
-
 
   # TODO: ONLY send board, goals, robots to the new user
   @doc "new_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
@@ -93,10 +92,9 @@ defmodule RicochetRobots.SocketHandler do
     Room.broadcast_scoreboard(state.registry_key)
 
     # send out user initialization info to client
-    response = Poison.encode!( %{ content: state[:player], action: "update_user" }  )
+    response = Poison.encode!(%{content: state[:player], action: "update_user"})
     {:reply, {:text, response}, state}
   end
-
 
   @doc "new_chatline: need to send out new chatline to all users"
   @impl true
@@ -105,7 +103,6 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, "success"}, state}
   end
 
-
   # TODO: Validate name against other users! Move to player.ex!
   @doc "update_user : need to send validated user info to 1 client and new scoreboard to all"
   @impl true
@@ -113,8 +110,21 @@ defmodule RicochetRobots.SocketHandler do
     Logger.debug("[Update user] " <> state[:player].username <> " --> " <> content["username"])
 
     old_user = state[:player]
-    new_username = if String.trim( content["username"] ) != "" do String.trim( content["username"] ) else old_user.username end
-    new_color = if String.trim( content["color"] ) != "" do String.trim( content["color"] ) else old_user.color end
+
+    new_username =
+      if String.trim(content["username"]) != "" do
+        String.trim(content["username"])
+      else
+        old_user.username
+      end
+
+    new_color =
+      if String.trim(content["color"]) != "" do
+        String.trim(content["color"])
+      else
+        old_user.color
+      end
+
     new_user = %{old_user | username: new_username, color: new_color}
     new_state = %{state | user: new_user}
 
@@ -122,18 +132,16 @@ defmodule RicochetRobots.SocketHandler do
     Room.broadcast_scoreboard(state.registry_key)
 
     # send client their new user info
-    response = Poison.encode!( %{ content: content, action: "update_user" }  )
-    {:reply, {:text, response}, new_state }
+    response = Poison.encode!(%{content: content, action: "update_user"})
+    {:reply, {:text, response}, new_state}
   end
-
 
   @doc "_ : handle all other JSON data with `action` as unknown."
   @impl true
   def websocket_handle({:json, action, _}, state) do
-    Logger.debug("[Unhandled code] " <> action )
+    Logger.debug("[Unhandled code] " <> action)
     {:reply, {:text, "Got some unhandled code?"}, state}
   end
-
 
   @doc "Handle all other messages on their way out to clients."
   @impl true
@@ -149,5 +157,4 @@ defmodule RicochetRobots.SocketHandler do
     Room.broadcast_scoreboard(state.registry_key)
     :ok
   end
-
 end

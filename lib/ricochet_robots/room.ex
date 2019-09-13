@@ -15,7 +15,7 @@ defmodule RicochetRobots.Room do
   @impl true
   def init(_opts) do
     Logger.debug("[Room: Started Room]")
-    new_room =  %__MODULE__{name: "Pizza House"}
+    new_room = %__MODULE__{name: "Pizza House"}
     {:ok, new_room}
   end
 
@@ -64,10 +64,10 @@ defmodule RicochetRobots.Room do
   @impl true
   def handle_cast({:broadcast_scoreboard, registry_key}, state) do
     Logger.debug("[Get scoreboard]")
-    response = Poison.encode!( %{ content: state.users, action: "update_scoreboard" }  )
+    response = Poison.encode!(%{content: state.users, action: "update_scoreboard"})
 
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn(entries) ->
+    |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
@@ -79,11 +79,13 @@ defmodule RicochetRobots.Room do
   @impl true
   def handle_cast({:user_chat, registry_key, user, message}, state) do
     Logger.debug("[User chat] <#{user.username}> #{message}")
-    response = Poison.encode!( %{ content: %{ user: user, msg: message, kind: 0}, action: "update_chat" }  )
+
+    response =
+      Poison.encode!(%{content: %{user: user, msg: message, kind: 0}, action: "update_chat"})
 
     # send chat message to all
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn(entries) ->
+    |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
@@ -97,11 +99,23 @@ defmodule RicochetRobots.Room do
   @impl true
   def handle_cast({:system_chat, registry_key, message}, state) do
     Logger.debug("[System chat] #{message}")
-    system_user = %{username: "System", color: "#c6c6c6", score: 0, is_admin: false, is_muted: false}
-    json_test = Poison.encode!(%{content: %{ user: system_user, msg: message, kind: 1 }, action: "update_chat" })
+
+    system_user = %{
+      username: "System",
+      color: "#c6c6c6",
+      score: 0,
+      is_admin: false,
+      is_muted: false
+    }
+
+    json_test =
+      Poison.encode!(%{
+        content: %{user: system_user, msg: message, kind: 1},
+        action: "update_chat"
+      })
 
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn(entries) ->
+    |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, json_test, [])
       end

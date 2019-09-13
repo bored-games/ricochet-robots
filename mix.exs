@@ -9,16 +9,16 @@ defmodule RicochetRobots.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
 
-			# Docs
-			name: "Robots-Server",
-			source_url: "https://github.com/gg314/TODO",
-			homepage_url: "http://TODO.com",
-			docs: [
-				main: "Robots-Server", # The main page in the docs
-	#			logo: "path/to/logo.png",
-				extras: ["README.md"]
+      # Docs
+      name: "RicochetRobots",
+      source_url: "https://github.com/gg314/TODO",
+      homepage_url: "http://TODO.com",
+      docs: [
+        # The main page in the docs
+        main: "RicochetRobots",
+        # 			logo: "path/to/logo.png",
+        extras: ["README.md"]
       ]
-
     ]
   end
 
