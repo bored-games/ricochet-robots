@@ -86,9 +86,15 @@ defmodule RicochetRobots.SocketHandler do
     Game.broadcast_visual_board(state.registry_key)
     Game.broadcast_robots(state.registry_key)
     Game.broadcast_goals(state.registry_key)
+    Game.broadcast_clock(state.registry_key)
 
     # TODO: seperate message for client that just joined?
-    Room.system_chat(state.registry_key, "#{state[:player].username} has joined the game.", {self(), "Welcome to Ricochet Robots, #{state[:player].username}!"})
+    Room.system_chat(
+      state.registry_key,
+      "#{state[:player].username} has joined the game.",
+      {self(), "Welcome to Ricochet Robots, #{state[:player].username}!"}
+    )
+
     Room.broadcast_scoreboard(state.registry_key)
 
     # send out user initialization info to client
@@ -102,15 +108,13 @@ defmodule RicochetRobots.SocketHandler do
     Room.user_chat(state.registry_key, state.player, content["msg"])
 
     # TEMPORARY:
-    if (content["msg"] == "a") do
+    if content["msg"] == "a" do
       Game.solution_found(state.registry_key, 3, 13, 12345)
     end
-    if (content["msg"] == "b") do
+
+    if content["msg"] == "b" do
       Game.award_points(state.registry_key, 3, 13, 12345)
     end
-
-
-
 
     {:reply, {:text, "success"}, state}
   end

@@ -8,12 +8,25 @@ defmodule RicochetRobots.Game do
             visual_board: nil,
             robots: [],
             goals: [],
+            # time in seconds after a solution is found
+            setting_countdown: 60,
+            # 1-robot solutions below this value should not count
+            setting_min_moves: 3,
+            # new board generated ever `n` many puzzles
+            setting_puzzles_before_new: 10,
+            # new board generated after this many more puzzles
+            current_puzzles_until_new: 10,
+            # current countdown: at 0, best solution wins
             current_countdown: 60,
+            # current timer
             current_timer: 0,
-            countdown_setting: 60,
+            # boolean: has solution been found
             solution_found: false,
+            # number of moves in current best solution
             solution_moves: 0,
+            # number of robots in current best solution
             solution_robots: 0,
+            # user id of current best solution
             solution_uid: 0
 
   def start_link(_opts) do
@@ -23,6 +36,7 @@ defmodule RicochetRobots.Game do
   @impl true
   def init(_) do
     Logger.debug("[Game: Started game]")
+    :timer.send_interval(1000, :timerevent)
     {visual_board, boundary_board, goals} = populate_board()
     robots = populate_robots()
 
@@ -58,6 +72,11 @@ defmodule RicochetRobots.Game do
   @doc "Send out the current goal positions, and the active goal symbol."
   def broadcast_goals(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_goals, registry_key})
+  end
+
+  @doc "Send out the current goal positions, and the active goal symbol."
+  def broadcast_clock(registry_key) do
+    GenServer.cast(__MODULE__, {:broadcast_clock, registry_key})
   end
 
   @doc ""
@@ -100,53 +119,92 @@ defmodule RicochetRobots.Game do
   @doc ""
   @impl true
   def handle_cast({:solution_found, registry_key, num_robots, num_moves, uid}, state) do
+    Room.system_chat(
+      registry_key,
+      "A #{num_robots}-robot, #{num_moves}-move solution has been found."
+    )
 
-    Room.system_chat(registry_key, "A #{num_robots}-robot, #{num_moves}-move solution has been found.")
-    response = Poison.encode!(%{content: state.current_countdown, action: "switch_to_countdown"})
+    response =
+      Poison.encode!(%{
+        content: %{ timer: state.current_timer, countdown: state.current_countdown},
+        action: "switch_to_countdown"
+      })
+
     Registry.RicochetRobots
     |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
     end)
-    countdown_setting = state.countdown_setting
+
+    setting_countdown = state.setting_countdown
 
     {:noreply,
      %{
-       state |
-         solution_found: true,
+       state
+       | solution_found: true,
          solution_moves: num_moves,
          solution_robots: num_robots,
          solution_uid: uid,
-         current_countdown: countdown_setting
+         current_countdown: setting_countdown
      }}
   end
 
+  @doc "Determine the current clock mode, and send out a signal for clients to sync"
+  @impl true
+  def handle_cast({:broadcast_clock, registry_key}, state) do
+
+    response = if (state.solution_found) do
+        Poison.encode!(%{
+          content: %{ timer: state.current_timer, countdown: state.current_countdown},
+          action: "switch_to_countdown"
+        })
+    else
+        Poison.encode!(%{
+          content: %{timer: state.current_timer, countdown: state.setting_countdown},
+          action: "switch_to_timer"
+        })
+    end
+
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn entries ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+    {:noreply, state}
+  end
 
   @doc ""
   @impl true
   def handle_cast({:award_points, registry_key, _num_robots, _num_moves, _uid}, state) do
-
     # ADD 1 PT TO WINNER, IFF SOLUTION WAS GOOD ENOUGH
 
- #   Room.system_chat(registry_key, "User has won with a #{robots}-robot, #{moves}-move solution.")
-    response = Poison.encode!(%{content: %{ timer: state.current_timer, countdown: state.countdown_setting }, action: "switch_to_timer"})
+    #   Room.system_chat(registry_key, "User has won with a #{robots}-robot, #{moves}-move solution.")
+    response =
+      Poison.encode!(%{
+        content: %{timer: state.current_timer, countdown: state.setting_countdown},
+        action: "switch_to_timer"
+      })
+
     Registry.RicochetRobots
     |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
     end)
-    countdown_setting = state.countdown_setting
+
+    reset_countdown = state.setting_countdown
 
     {:noreply,
      %{
-       state |
-         solution_found: false,
+       state
+       | solution_found: false,
          solution_moves: 0,
          solution_robots: 0,
          solution_uid: 0,
-         current_countdown: countdown_setting,
+         current_countdown: reset_countdown,
          current_timer: 0
      }}
   end
@@ -191,6 +249,23 @@ defmodule RicochetRobots.Game do
     end)
 
     {:noreply, state}
+  end
+
+  @doc "Tick 1 second"
+  @impl GenServer
+  def handle_info(:timerevent, state) do
+    new_countdown =
+      if state.solution_found do
+        state.current_countdown - 1
+      else
+        state.current_countdown
+      end
+
+    new_timer = state.current_timer + 1
+
+    # if state.current_countdown <= 0...
+
+    {:noreply, %{state | current_countdown: new_countdown, current_timer: new_timer}}
   end
 
   # TODO: use these or get rid of them? When is a type better than a defstruct?

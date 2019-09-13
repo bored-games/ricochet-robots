@@ -61,7 +61,15 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:update_user, updated_user}, state) do
-    users = Enum.map(state.users, fn u -> (if u.unique_key == updated_user.unique_key do updated_user else u end) end)
+    users =
+      Enum.map(state.users, fn u ->
+        if u.unique_key == updated_user.unique_key do
+          updated_user
+        else
+          u
+        end
+      end)
+
     {:noreply, %{state | users: users}}
   end
 
@@ -127,12 +135,13 @@ defmodule RicochetRobots.Room do
     Registry.RicochetRobots
     |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
-        if (pid == pidmatch) do
+        if pid == pidmatch do
           json_msg2 =
             Poison.encode!(%{
               content: %{user: system_user, msg: message2, kind: 1},
               action: "update_chat"
             })
+
           Process.send(pid, json_msg2, [])
         else
           Process.send(pid, json_msg, [])
