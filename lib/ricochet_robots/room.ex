@@ -28,6 +28,10 @@ defmodule RicochetRobots.Room do
     GenServer.cast(__MODULE__, {:add_user, user})
   end
 
+  def update_user(key) do
+    GenServer.cast(__MODULE__, {:update_user, key})
+  end
+
   def remove_user(key) do
     GenServer.cast(__MODULE__, {:remove_user, key})
   end
@@ -40,8 +44,8 @@ defmodule RicochetRobots.Room do
     GenServer.cast(__MODULE__, {:user_chat, registry_key, user, message})
   end
 
-  def system_chat(registry_key, message) do
-    GenServer.cast(__MODULE__, {:system_chat, registry_key, message})
+  def system_chat(registry_key, message, message2 \\ {0, ""}) do
+    GenServer.cast(__MODULE__, {:system_chat, registry_key, message, message2})
   end
 
   @impl true
@@ -53,6 +57,12 @@ defmodule RicochetRobots.Room do
   @impl true
   def handle_cast({:add_user, user}, state) do
     {:noreply, %{state | users: [user | state.users]}}
+  end
+
+  @impl true
+  def handle_cast({:update_user, updated_user}, state) do
+    users = Enum.map(state.users, fn u -> (if u.unique_key == updated_user.unique_key do updated_user else u end) end)
+    {:noreply, %{state | users: users}}
   end
 
   @impl true
@@ -97,7 +107,7 @@ defmodule RicochetRobots.Room do
   end
 
   @impl true
-  def handle_cast({:system_chat, registry_key, message}, state) do
+  def handle_cast({:system_chat, registry_key, message, {pidmatch, message2}}, state) do
     Logger.debug("[System chat] #{message}")
 
     system_user = %{
@@ -108,7 +118,7 @@ defmodule RicochetRobots.Room do
       is_muted: false
     }
 
-    json_test =
+    json_msg =
       Poison.encode!(%{
         content: %{user: system_user, msg: message, kind: 1},
         action: "update_chat"
@@ -117,7 +127,16 @@ defmodule RicochetRobots.Room do
     Registry.RicochetRobots
     |> Registry.dispatch(registry_key, fn entries ->
       for {pid, _} <- entries do
-        Process.send(pid, json_test, [])
+        if (pid == pidmatch) do
+          json_msg2 =
+            Poison.encode!(%{
+              content: %{user: system_user, msg: message2, kind: 1},
+              action: "update_chat"
+            })
+          Process.send(pid, json_msg2, [])
+        else
+          Process.send(pid, json_msg, [])
+        end
       end
     end)
 

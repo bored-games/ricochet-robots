@@ -220,6 +220,24 @@ defmodule RicochetRobots.Game do
     open = for c <- 1..31, into: %{0 => 1, 32 => 1}, do: {c, 0}
     a = for r <- 1..31, into: %{0 => solid, 32 => solid}, do: {r, open}
 
+    a = put_in(a[14][14], 1)
+    a = put_in(a[14][15], 1)
+    a = put_in(a[14][16], 1)
+    a = put_in(a[14][17], 1)
+    a = put_in(a[14][18], 1)
+    a = put_in(a[15][14], 1)
+    a = put_in(a[16][14], 1)
+    a = put_in(a[17][14], 1)
+    a = put_in(a[18][14], 1)
+    a = put_in(a[18][15], 1)
+    a = put_in(a[18][16], 1)
+    a = put_in(a[18][17], 1)
+    a = put_in(a[14][18], 1)
+    a = put_in(a[15][18], 1)
+    a = put_in(a[16][18], 1)
+    a = put_in(a[17][18], 1)
+    a = put_in(a[18][18], 1)
+
     # two | per board edge, with certain spaces avoided
     v1 = Enum.random([4, 6, 8, 10, 12, 14])
     a = put_in(a[1][v1], 1)

@@ -88,7 +88,7 @@ defmodule RicochetRobots.SocketHandler do
     Game.broadcast_goals(state.registry_key)
 
     # TODO: seperate message for client that just joined?
-    Room.system_chat(state.registry_key, state[:player].username <> " has joined the game.")
+    Room.system_chat(state.registry_key, "#{state[:player].username} has joined the game.", {self(), "Welcome to Ricochet Robots, #{state[:player].username}!"})
     Room.broadcast_scoreboard(state.registry_key)
 
     # send out user initialization info to client
@@ -113,7 +113,7 @@ defmodule RicochetRobots.SocketHandler do
 
     new_username =
       if String.trim(content["username"]) != "" do
-        String.trim(content["username"])
+        String.slice(String.trim(content["username"]), 0, 16)
       else
         old_user.username
       end
@@ -126,9 +126,10 @@ defmodule RicochetRobots.SocketHandler do
       end
 
     new_user = %{old_user | username: new_username, color: new_color}
-    new_state = %{state | user: new_user}
+    new_state = %{state | player: new_user}
 
     # send scoreboard to all
+    Room.update_user(new_user)
     Room.broadcast_scoreboard(state.registry_key)
 
     # send client their new user info
