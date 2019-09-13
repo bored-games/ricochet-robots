@@ -2,13 +2,19 @@ defmodule RicochetRobots.Game do
   use GenServer
   import Bitwise
   require Logger
+  alias RicochetRobots.Room, as: Room
 
   defstruct boundary_board: nil,
             visual_board: nil,
             robots: [],
             goals: [],
-            countdown: 60,
-            timer: 0
+            current_countdown: 60,
+            current_timer: 0,
+            countdown_setting: 60,
+            solution_found: false,
+            solution_moves: 0,
+            solution_robots: 0,
+            solution_uid: 0
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -30,6 +36,7 @@ defmodule RicochetRobots.Game do
     {:ok, state}
   end
 
+  @doc "New game (new boards, new robot positions, new goal positions)."
   def new_game(registry_key) do
     Logger.debug("[Game: New game]")
     GenServer.cast(__MODULE__, {:new_game})
@@ -38,28 +45,29 @@ defmodule RicochetRobots.Game do
     broadcast_goals(registry_key)
   end
 
+  @doc "Send out the current board."
   def broadcast_visual_board(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_visual_board, registry_key})
   end
 
+  @doc "Send out the current robot positions."
   def broadcast_robots(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_robots, registry_key})
   end
 
+  @doc "Send out the current goal positions, and the active goal symbol."
   def broadcast_goals(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_goals, registry_key})
   end
 
-  def get_board() do
-    GenServer.call(__MODULE__, :get_visual_board)
+  @doc ""
+  def solution_found(registry_key, num_robots, num_moves, uid) do
+    GenServer.cast(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
   end
 
-  def get_robots() do
-    GenServer.call(__MODULE__, :get_robots)
-  end
-
-  def get_goals() do
-    GenServer.call(__MODULE__, :get_goals)
+  @doc ""
+  def award_points(registry_key, num_robots, num_moves, uid) do
+    GenServer.cast(__MODULE__, {:award_points, registry_key, num_robots, num_moves, uid})
   end
 
   # TODO...
@@ -89,9 +97,62 @@ defmodule RicochetRobots.Game do
      }}
   end
 
+  @doc ""
+  @impl true
+  def handle_cast({:solution_found, registry_key, num_robots, num_moves, uid}, state) do
+
+    Room.system_chat(registry_key, "A #{num_robots}-robot, #{num_moves}-move solution has been found.")
+    response = Poison.encode!(%{content: state.current_countdown, action: "switch_to_countdown"})
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn entries ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+    countdown_setting = state.countdown_setting
+
+    {:noreply,
+     %{
+       state |
+         solution_found: true,
+         solution_moves: num_moves,
+         solution_robots: num_robots,
+         solution_uid: uid,
+         current_countdown: countdown_setting
+     }}
+  end
+
+
+  @doc ""
+  @impl true
+  def handle_cast({:award_points, registry_key, _num_robots, _num_moves, _uid}, state) do
+
+    # ADD 1 PT TO WINNER, IFF SOLUTION WAS GOOD ENOUGH
+
+ #   Room.system_chat(registry_key, "User has won with a #{robots}-robot, #{moves}-move solution.")
+    response = Poison.encode!(%{content: %{ timer: state.current_timer, countdown: state.countdown_setting }, action: "switch_to_timer"})
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn entries ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+    countdown_setting = state.countdown_setting
+
+    {:noreply,
+     %{
+       state |
+         solution_found: false,
+         solution_moves: 0,
+         solution_robots: 0,
+         solution_uid: 0,
+         current_countdown: countdown_setting,
+         current_timer: 0
+     }}
+  end
+
   @impl true
   def handle_cast({:broadcast_visual_board, registry_key}, state) do
-    Logger.debug("[Broadcast board]")
     response = Poison.encode!(%{content: state.visual_board, action: "update_board"})
 
     Registry.RicochetRobots
@@ -106,7 +167,6 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def handle_cast({:broadcast_robots, registry_key}, state) do
-    Logger.debug("[Broadcast robots]")
     response = Poison.encode!(%{content: state.robots, action: "update_robots"})
 
     Registry.RicochetRobots
@@ -121,7 +181,6 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def handle_cast({:broadcast_goals, registry_key}, state) do
-    Logger.debug("[Broadcast goals]")
     response = Poison.encode!(%{content: state.goals, action: "update_goals"})
 
     Registry.RicochetRobots
