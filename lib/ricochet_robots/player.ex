@@ -28,16 +28,26 @@ defmodule RicochetRobots.Player do
       "Electro",
       "Robo",
       "Battery",
-      "Beep"
+      "Beep",
+      "Chip",
+      "Boron",
+      "Zat",
+      "Gort",
+      "Torg",
+      "Plex",
+      "Doom",
+      "Mecha",
+      "Alpha",
+      "R2"
     ]
 
     arr2 = [
+      "HAL",
       "Lover",
       "Love",
       "Power",
       "nic",
       "Servo",
-      "",
       "Clicker",
       "Friend",
       "Zap",
@@ -48,7 +58,11 @@ defmodule RicochetRobots.Player do
       "Boop",
       "Sim",
       "Asimov",
-      "Talos"
+      "Talos",
+      "EVE",
+      "-3PO",
+      "bot",
+      "",
     ]
 
     arr3 = [

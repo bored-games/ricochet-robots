@@ -89,6 +89,15 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:award_points, registry_key, num_robots, num_moves, uid})
   end
 
+
+
+  @doc "Given a list of moves, move the robots; then calculate_new_moves(); return the final positions of the robots and their new moves"
+  def move_robots(_robots, solution) do
+    GenServer.cast(__MODULE__, {:check_solution, solution})
+  end
+
+
+
   # TODO...
   def check_solution(_board, solution) do
     GenServer.cast(__MODULE__, {:check_solution, solution})
