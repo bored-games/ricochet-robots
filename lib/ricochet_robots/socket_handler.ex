@@ -83,12 +83,7 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "create_user", _content}, state) do
     Logger.debug("[New user]: " <> state[:player].username)
 
-    Game.broadcast_visual_board(state.registry_key)
-    Game.broadcast_robots(state.registry_key)
-    Game.broadcast_goals(state.registry_key)
-    Game.broadcast_clock(state.registry_key)
-
-    # TODO: seperate message for client that just joined?
+    # seperate message for client that just joined
     Room.system_chat(
       state.registry_key,
       "#{state[:player].username} has joined the game.",
@@ -96,6 +91,11 @@ defmodule RicochetRobots.SocketHandler do
     )
 
     Room.broadcast_scoreboard(state.registry_key)
+
+    Game.broadcast_visual_board(state.registry_key)
+    Game.broadcast_robots(state.registry_key)
+    Game.broadcast_goals(state.registry_key)
+    Game.broadcast_clock(state.registry_key)
 
     # send out user initialization info to client
     response = Poison.encode!(%{content: state[:player], action: "update_user"})
@@ -151,6 +151,22 @@ defmodule RicochetRobots.SocketHandler do
     # send client their new user info
     response = Poison.encode!(%{content: content, action: "update_user"})
     {:reply, {:text, response}, new_state}
+  end
+
+  # TODO: all
+  @doc "submit_movelist : simulate the req. moves"
+  @impl true
+  def websocket_handle({:json, "submit_movelist", content}, state) do
+    Logger.debug("[Move] " <> state[:player].username <> " --> ")
+
+    # TODO: simulate the moves starting with true game board
+
+    # TODO: switch to solution mode iff solution found
+
+    # TODO: respond with list of robots (new positions and available moves) for *this* user
+    new_robots = state[:robots]
+    response = Poison.encode!(%{content: new_robots, action: "update_robots"})
+    {:reply, {:text, response}, state}
   end
 
   @doc "_ : handle all other JSON data with `action` as unknown."
