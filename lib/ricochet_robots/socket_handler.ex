@@ -160,11 +160,12 @@ defmodule RicochetRobots.SocketHandler do
     Logger.debug("[Move] " <> state[:player].username <> " --> ")
 
     # TODO: simulate the moves starting with true game board
-
+    ### Game.move("red", "left")
     # TODO: switch to solution mode iff solution found
 
     # TODO: respond with list of robots (new positions and available moves) for *this* user
-    new_robots = state[:robots]
+    new_robots = Game.move_robots(content)
+
     response = Poison.encode!(%{content: new_robots, action: "update_robots"})
     {:reply, {:text, response}, state}
   end

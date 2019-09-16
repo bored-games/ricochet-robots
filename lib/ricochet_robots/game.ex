@@ -92,8 +92,51 @@ defmodule RicochetRobots.Game do
 
 
   @doc "Given a list of moves, move the robots; then calculate_new_moves(); return the final positions of the robots and their new moves"
-  def move_robots(_robots, solution) do
-    GenServer.cast(__MODULE__, {:check_solution, solution})
+  def move_robots(moves) do
+    GenServer.call(__MODULE__, {:move_robots, moves})
+  end
+
+  #
+  @impl true
+  def handle_call({:move_robots, moves}, _from, state) do
+    # new_robots = [%{pos: %{x: 1, y: 1}, color: "red", moves: ["up", "left", "down", "right"]}]
+    new_robots = make_move(state.robots, state.boundary_board, moves)
+    {:reply, new_robots, state}
+  end
+
+  # Out of moves -- TODO: check if solution was found
+  defp make_move(robots, _board, []) do
+    robots
+
+    #calculate_moves(robots)
+  end
+
+  defp make_move(robots, board, [headmove | tailmoves]) do
+    Logger.debug("[Moving #{headmove["color"]} #{headmove["direction"]}]")
+
+    direction = headmove["direction"]
+    moved_robot = Enum.find(robots, nil, fn r -> r.color == headmove["color"] end)
+    %{x: rx, y: ry} = moved_robot[:pos]
+
+    IO.inspect(ry)
+    new_pos = case direction do
+      "up" ->
+        %{x: rx, y: ry-1}
+      "down" ->
+        %{x: rx, y: ry+1}
+      "left" ->
+        %{x: rx-1, y: ry}
+      "right" ->
+        %{x: rx+1, y: ry}
+      _ ->
+        %{x: rx, y: ry}
+    end
+
+    new_robot = %{moved_robot | pos: new_pos}
+    new_robots = Enum.map(robots, fn r -> if r.color == headmove["color"] do new_robot else r end end)
+    # robots = ..
+
+    make_move(new_robots, board, tailmoves)
   end
 
 
@@ -259,6 +302,7 @@ defmodule RicochetRobots.Game do
 
     {:noreply, state}
   end
+
 
   @doc "Tick 1 second"
   @impl GenServer
