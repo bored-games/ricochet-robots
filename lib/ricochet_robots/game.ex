@@ -90,7 +90,6 @@ defmodule RicochetRobots.Game do
   end
 
 
-
   @doc "Given a list of moves, move the robots; then calculate_new_moves(); return the final positions of the robots and their new moves"
   def move_robots(moves) do
     GenServer.call(__MODULE__, {:move_robots, moves})
@@ -99,7 +98,6 @@ defmodule RicochetRobots.Game do
   #
   @impl true
   def handle_call({:move_robots, moves}, _from, state) do
-    # new_robots = [%{pos: %{x: 1, y: 1}, color: "red", moves: ["up", "left", "down", "right"]}]
     new_robots = make_move(state.robots, state.boundary_board, moves)
     {:reply, new_robots, state}
   end
@@ -107,7 +105,6 @@ defmodule RicochetRobots.Game do
   # Out of moves -- TODO: check if solution was found
   defp make_move(robots, _board, []) do
     robots
-
     #calculate_moves(robots)
   end
 
@@ -118,10 +115,10 @@ defmodule RicochetRobots.Game do
     moved_robot = Enum.find(robots, nil, fn r -> r.color == color end)
     %{x: rx, y: ry} = moved_robot[:pos]
 
-    # TODO.... carefully
+    # TODO: clean up?
     new_pos = case direction do
       "up" ->
-        %{x: rx, y: Enum.max([0, 1])}
+        %{x: rx, y: Enum.max([get_wall_blocked_indices(moved_robot[:pos], :up, board) | get_robot_blocked_indices(moved_robot[:pos], :up, robots)])}
       "down" ->
         %{x: rx, y: Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)])} # min([ wall-blocked, robot-blocked])
       "left" ->
@@ -139,12 +136,12 @@ defmodule RicochetRobots.Game do
 
   #@doc "Given a robot position and direction, return the relevant index of the first wall the robot will hit."
   defp get_wall_blocked_indices(vb_pos, direction, board) do
-    bb_pos = %{row: 2*vb_pos[:y] + 1, col: 2*vb_pos[:x] + 1}
+    bb_pos = %{row: round(2*vb_pos[:y] + 1), col: round(2*vb_pos[:x] + 1)}
     case direction do
       :up ->
-        0 # max( all rows where row < bb_pos[:row] and cell == 1   )/2
+        Enum.max( Enum.map( Enum.filter( (for z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]}), fn {a, b} -> (b == 1 && a < bb_pos[:row]) end), fn {a, _b} -> a end ) )/2 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
       :down ->
-        15 # min( all rows where row > bb_pos[:row] and cell == 1   )/2-1
+        Enum.min( Enum.map( Enum.filter( (for z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]}), fn {a, b} -> (b == 1 && a > bb_pos[:row]) end), fn {a, _b} -> a end ) )/2 - 1 # min( all rows where row > bb_pos[:row] and cell == 1   )/2-1
       :left ->
         Enum.max( Enum.map( Enum.filter( board[bb_pos[:row]], fn {a, b} -> (b == 1 && a < bb_pos[:col]) end), fn {a, _b} -> a end ) )/2 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
       :right ->
@@ -154,6 +151,7 @@ defmodule RicochetRobots.Game do
     end
   end
 
+  # TODO:
   #@doc "Given a robot position and direction, return a list of indices of any robots that the active robot will hit."
   defp get_robot_blocked_indices(_robot_pos, _direction, _robots) do
     []
