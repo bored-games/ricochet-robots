@@ -16,7 +16,7 @@ defmodule RicochetRobots.MixProject do
       docs: [
         # The main page in the docs
         main: "RicochetRobots",
-        # 			logo: "path/to/logo.png",
+        logo: "src/assets/logo.png",
         extras: ["README.md"]
       ]
     ]
