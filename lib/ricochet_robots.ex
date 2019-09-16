@@ -1,6 +1,6 @@
 defmodule RicochetRobots do
   @moduledoc """
-  Documentation for RicochetRobots.
+  A multiplayer server for the popular board game *Ricochet Robots*.
   """
 
   def start(_type, _args) do

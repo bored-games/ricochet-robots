@@ -112,33 +112,52 @@ defmodule RicochetRobots.Game do
   end
 
   defp make_move(robots, board, [headmove | tailmoves]) do
-    Logger.debug("[Moving #{headmove["color"]} #{headmove["direction"]}]")
-
+    color = headmove["color"]
     direction = headmove["direction"]
-    moved_robot = Enum.find(robots, nil, fn r -> r.color == headmove["color"] end)
+    Logger.debug("[Moving #{color} robot #{direction}]")
+    moved_robot = Enum.find(robots, nil, fn r -> r.color == color end)
     %{x: rx, y: ry} = moved_robot[:pos]
 
-    IO.inspect(ry)
+    # TODO.... carefully
     new_pos = case direction do
       "up" ->
-        %{x: rx, y: ry-1}
+        %{x: rx, y: Enum.max([0, 1])}
       "down" ->
-        %{x: rx, y: ry+1}
+        %{x: rx, y: Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)])} # min([ wall-blocked, robot-blocked])
       "left" ->
-        %{x: rx-1, y: ry}
+        %{x: Enum.max([get_wall_blocked_indices(moved_robot[:pos], :left, board) | get_robot_blocked_indices(moved_robot[:pos], :left, robots)]), y: ry}
       "right" ->
-        %{x: rx+1, y: ry}
+        %{x: Enum.min([get_wall_blocked_indices(moved_robot[:pos], :right, board) | get_robot_blocked_indices(moved_robot[:pos], :right, robots)]), y: ry}
       _ ->
         %{x: rx, y: ry}
     end
 
-    new_robot = %{moved_robot | pos: new_pos}
-    new_robots = Enum.map(robots, fn r -> if r.color == headmove["color"] do new_robot else r end end)
-    # robots = ..
-
+    moved_robot = %{moved_robot | pos: new_pos}
+    new_robots = Enum.map(robots, fn r -> if r.color == color do moved_robot else r end end)
     make_move(new_robots, board, tailmoves)
   end
 
+  #@doc "Given a robot position and direction, return the relevant index of the first wall the robot will hit."
+  defp get_wall_blocked_indices(vb_pos, direction, board) do
+    bb_pos = %{row: 2*vb_pos[:y] + 1, col: 2*vb_pos[:x] + 1}
+    case direction do
+      :up ->
+        0 # max( all rows where row < bb_pos[:row] and cell == 1   )/2
+      :down ->
+        15 # min( all rows where row > bb_pos[:row] and cell == 1   )/2-1
+      :left ->
+        Enum.max( Enum.map( Enum.filter( board[bb_pos[:row]], fn {a, b} -> (b == 1 && a < bb_pos[:col]) end), fn {a, _b} -> a end ) )/2 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+      :right ->
+        Enum.min( Enum.map( Enum.filter( board[bb_pos[:row]], fn {a, b} -> (b == 1 && a > bb_pos[:col]) end), fn {a, _b} -> a end ) )/2 - 1 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+      _ ->
+        0
+    end
+  end
+
+  #@doc "Given a robot position and direction, return a list of indices of any robots that the active robot will hit."
+  defp get_robot_blocked_indices(_robot_pos, _direction, _robots) do
+    []
+  end
 
 
   # TODO...
