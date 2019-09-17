@@ -33,6 +33,34 @@ defmodule RicochetRobots.Game do
             # user id of current best solution
             solution_uid: 0
 
+
+
+  # TODO: use these or get rid of them? When is a type better than a defstruct?
+  @typedoc "User: { username: String, color: String, score: integer }"
+  @type user_t :: %{
+    username: String.t(),
+    color: String.t(),
+    score: integer,
+    datestr: DateTime.t()
+  }
+
+  @typedoc "Position: { row: Integer, col: Integer }"
+  @type position_t :: {integer, integer}
+
+  @typedoc "Position2: { row: Integer, col: Integer }"
+  @type position2_t :: %{x: integer, y: integer}
+
+  @typedoc "Robot: { pos: position, color: String }"
+  @type robot_t :: %{pos: position2_t, color: String.t(), moves: [String.t()]}
+
+  @typedoc "Goal: { pos: position, symbol: String, active: boolean }"
+  @type goal_t :: %{pos: position2_t, symbol: String.t(), active: boolean}
+
+  @typedoc "Move"
+  @type move_t :: %{color: String.t, direction: String.t}
+
+
+
   @doc false
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
@@ -136,6 +164,7 @@ defmodule RicochetRobots.Game do
   If a solution has been found, `solution_found/4` is called.
 
   """
+  @spec move_robots([move_t]) :: [robot_t]
   def move_robots(moves) do
     GenServer.call(__MODULE__, {:move_robots, moves})
   end
@@ -143,17 +172,29 @@ defmodule RicochetRobots.Game do
   @impl true
   def handle_call({:move_robots, moves}, _from, state) do
     new_robots = make_move(state.robots, state.boundary_board, moves)
+    IO.inspect(new_robots)
     {:reply, new_robots, state}
   end
 
-  # Given a list of robots and a boundary_board, find the set of legal moves for each robot.
-  defp calculate_moves(robots, _board) do
-    robots
+  # Given a specific robot, a list of robots and a boundary_board, find the set of legal moves for each robot.
+  defp calculate_moves(robot, robots, board) do
+    %{x: vbx, y: vby} = robot.pos
+    %{x: bbx, y: bby} = %{y: (2*vby + 1), x: round(2*vbx + 1)}
+    robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
+    move_left  = if ( Enum.member?( robot_positions, %{x: vbx-1, y: vby}) || board[bby][bbx-1] == 1) do nil else "left" end
+    move_right = if ( Enum.member?( robot_positions, %{x: vbx+1, y: vby}) || board[bby][bbx+1] == 1) do nil else "right" end
+    move_up    = if ( Enum.member?( robot_positions, %{x: vbx, y: vby-1}) || board[bby-1][bbx] == 1) do nil else "up" end
+    move_down  = if ( Enum.member?( robot_positions, %{x: vbx, y: vby+1}) || board[bby+1][bbx] == 1) do nil else "down" end
+
+    moves = Enum.filter([move_left, move_right, move_up, move_down], & !is_nil(&1))
+   # IO.inspect(%{robot | moves: moves})
+    %{robot | moves: moves}
   end
 
   # Out of moves -- TODO: check if solution was found
   defp make_move(robots, board, []) do
-    calculate_moves(robots, board)
+    # Calculate valid moveset for each robot.
+    Enum.map(robots, fn r -> calculate_moves(r, robots, board) end)
   end
 
   defp make_move(robots, board, [headmove | tailmoves]) do
@@ -166,13 +207,13 @@ defmodule RicochetRobots.Game do
     # TODO: clean up?
     new_pos = case direction do
       "up" ->
-        %{x: rx, y: Enum.max([get_wall_blocked_indices(moved_robot[:pos], :up, board) | get_robot_blocked_indices(moved_robot[:pos], :up, robots)])}
+        %{x: rx, y: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :up, board) | get_robot_blocked_indices(moved_robot[:pos], :up, robots)]))}
       "down" ->
-        %{x: rx, y: Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)])} # min([ wall-blocked, robot-blocked])
+        %{x: rx, y: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)]))} # min([ wall-blocked, robot-blocked])
       "left" ->
-        %{x: Enum.max([get_wall_blocked_indices(moved_robot[:pos], :left, board) | get_robot_blocked_indices(moved_robot[:pos], :left, robots)]), y: ry}
+        %{x: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :left, board) | get_robot_blocked_indices(moved_robot[:pos], :left, robots)])), y: ry}
       "right" ->
-        %{x: Enum.min([get_wall_blocked_indices(moved_robot[:pos], :right, board) | get_robot_blocked_indices(moved_robot[:pos], :right, robots)]), y: ry}
+        %{x: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :right, board) | get_robot_blocked_indices(moved_robot[:pos], :right, robots)])), y: ry}
       _ ->
         %{x: rx, y: ry}
     end
@@ -394,27 +435,6 @@ defmodule RicochetRobots.Game do
 
     {:noreply, %{state | current_countdown: new_countdown, current_timer: new_timer}}
   end
-
-  # TODO: use these or get rid of them? When is a type better than a defstruct?
-  @typedoc "User: { username: String, color: String, score: integer }"
-  @type user_t :: %{
-          username: String.t(),
-          color: String.t(),
-          score: integer,
-          datestr: DateTime.t()
-        }
-
-  @typedoc "Position: { row: Integer, col: Integer }"
-  @type position_t :: {integer, integer}
-
-  @typedoc "Position2: { row: Integer, col: Integer }"
-  @type position2_t :: %{x: integer, y: integer}
-
-  @typedoc "Robot: { pos: position, color: String }"
-  @type robot_t :: %{pos: position2_t, color: String.t(), moves: [String.t()]}
-
-  @typedoc "Goal: { pos: position, symbol: String, active: boolean }"
-  @type goal_t :: %{pos: position2_t, symbol: String.t(), active: boolean}
 
   @doc "Return 5 robots in unique, random positions, avoiding the center 4 squares."
   @spec populate_robots() :: [robot_t]
@@ -853,7 +873,10 @@ defmodule RicochetRobots.Game do
   end
 
   # TODO: write this with position_t type
-  @doc "Take {x1, y1} and {x2, y2}; is the distance between them more than 2.0 (on condensed board; 4.0 on boundary_board)?"
+  @doc """
+  Take {x1, y1} and {x2, y2}; is the distance between them more than 2.0on "visual board" (4.0 on "boundary board")?
+
+  """
   @spec dist_under_2?({integer, integer}, {integer, integer}) :: boolean
   def dist_under_2?({x1, y1}, {x2, y2}) do
     (y1 - y2) * (y1 - y2) + (x1 - x2) * (x1 - x2) <= 16.0
