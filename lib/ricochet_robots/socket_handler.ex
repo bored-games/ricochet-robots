@@ -1,4 +1,7 @@
 defmodule RicochetRobots.SocketHandler do
+  @moduledoc """
+  Controls the way a user interacts with a `Room` (e.g. chat) or a `Game` (e.g. making a move).
+  """
   @behaviour :cowboy_websocket
 
   require Logger

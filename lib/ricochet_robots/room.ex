@@ -1,4 +1,10 @@
 defmodule RicochetRobots.Room do
+  @moduledoc """
+  Defines a `Room`.
+
+  A `Room` contains information about current users and can have up to one `game`, e.g. `RicochetRobots.Game`, attached.
+  """
+
   use GenServer
   require Logger
 
@@ -7,8 +13,8 @@ defmodule RicochetRobots.Room do
             users: [],
             chat: []
 
+  @doc false
   def start_link(_opts) do
-    Logger.debug("started room link")
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
@@ -19,33 +25,64 @@ defmodule RicochetRobots.Room do
     {:ok, new_room}
   end
 
+  @doc """
+  Start a `GameSupervisor`, e.g. `RicochetRobots.GameSupervisor` which will handle running a game.
+  """
   def create_game() do
     GenServer.cast(__MODULE__, {:create_game})
     Logger.debug("[Room: Created Game]")
   end
 
+  @doc """
+  Add a user to the room.
+  """
   def add_user(user) do
     GenServer.cast(__MODULE__, {:add_user, user})
   end
 
+  @doc """
+  Update (replace) a user.
+
+  `key`: the unique key for the user to be replaced.
+  """
   def update_user(key) do
     GenServer.cast(__MODULE__, {:update_user, key})
   end
 
+  @doc """
+  Remove a user by their unique `key`.
+  """
   def remove_user(key) do
     GenServer.cast(__MODULE__, {:remove_user, key})
   end
 
+  @doc """
+  Send out a list of all users, to all users.
+  """
   def broadcast_scoreboard(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_scoreboard, registry_key})
   end
 
+  @doc """
+  Send a chat message from `user` to all users.
+  """
   def user_chat(registry_key, user, message) do
     GenServer.cast(__MODULE__, {:user_chat, registry_key, user, message})
   end
 
-  def system_chat(registry_key, message, message2 \\ {0, ""}) do
-    GenServer.cast(__MODULE__, {:system_chat, registry_key, message, message2})
+  @doc """
+  Send a system chat message to all users.
+
+  * `message`: the content of the message.
+  * `special_message = {pid, content}`: if non-empty, a separate message will be sent to a special user (typically the calling user).
+
+  ## Example
+
+      system_chat(state.registry_key, "Say hello to the new user", {self(), "Welcome to the game"})
+
+  """
+  def system_chat(registry_key, message, special_message \\ {0, ""}) do
+    GenServer.cast(__MODULE__, {:system_chat, registry_key, message, special_message})
   end
 
   @impl true

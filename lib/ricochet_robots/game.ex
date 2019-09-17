@@ -1,4 +1,8 @@
 defmodule RicochetRobots.Game do
+  @moduledoc """
+  Ricochet Robots game components, including settings, solving, game state, etc.
+  """
+
   use GenServer
   import Bitwise
   require Logger
@@ -29,6 +33,7 @@ defmodule RicochetRobots.Game do
             # user id of current best solution
             solution_uid: 0
 
+  @doc false
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
@@ -50,7 +55,12 @@ defmodule RicochetRobots.Game do
     {:ok, state}
   end
 
-  @doc "New game (new boards, new robot positions, new goal positions)."
+  @doc """
+  Being a new game (new boards, new robot positions, new goal positions).
+
+  Broadcast new game information and clear all move queues.
+
+  """
   def new_game(registry_key) do
     Logger.debug("[Game: New game]")
     GenServer.cast(__MODULE__, {:new_game})
@@ -59,53 +69,91 @@ defmodule RicochetRobots.Game do
     broadcast_goals(registry_key)
   end
 
-  @doc "Send out the current board."
+  @doc """
+  Send out the new "visual board" to all users.
+
+  The visual board is the coded representation of the grid of spaces and walls.
+
+  """
   def broadcast_visual_board(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_visual_board, registry_key})
   end
 
-  @doc "Send out the current robot positions."
+  @doc """
+  Send out the robot starting positions, including available move directions.
+
+  """
   def broadcast_robots(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_robots, registry_key})
   end
 
-  @doc "Send out the current goal positions, and the active goal symbol."
+  @doc """
+  Send out the current goal positions and the active goal symbol.
+
+  """
   def broadcast_goals(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_goals, registry_key})
   end
 
-  @doc "Send out the current goal positions, and the active goal symbol."
+  @doc """
+  Send out the current clock information.
+
+  If a solution has been found, the clock should switch to "countdown" mode. Otherwise, the clock
+  continues running in "timer" mode.
+
+  At certain times, such as when a new user joins or the clock is reset, it is necessary to
+  broadcast the true timer information. Otherwise, the client can handle ticking the timer.
+
+  """
   def broadcast_clock(registry_key) do
     GenServer.cast(__MODULE__, {:broadcast_clock, registry_key})
   end
 
-  @doc ""
+  @doc """
+  TODO: docs
+  """
   def solution_found(registry_key, num_robots, num_moves, uid) do
     GenServer.cast(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
   end
 
-  @doc ""
+  @doc """
+  Award a point to the winning solution, but only if the solution is good enough.
+
+  `state.setting_min_moves` determines the minimum number of moves required for a single-robot solution
+  to earn a point. All solutions involves more than two robots are scored.
+
+  """
   def award_points(registry_key, num_robots, num_moves, uid) do
     GenServer.cast(__MODULE__, {:award_points, registry_key, num_robots, num_moves, uid})
   end
 
 
-  @doc "Given a list of moves, move the robots; then calculate_new_moves(); return the final positions of the robots and their new moves"
+  @doc """
+  Given a list of moves, move the robots; then calculate_new_moves();
+
+  Returns the final positions of the robots and the set of new valid moves.
+
+  If a solution has been found, `solution_found/4` is called.
+
+  """
   def move_robots(moves) do
     GenServer.call(__MODULE__, {:move_robots, moves})
   end
 
-  #
   @impl true
   def handle_call({:move_robots, moves}, _from, state) do
     new_robots = make_move(state.robots, state.boundary_board, moves)
     {:reply, new_robots, state}
   end
 
-  # Out of moves -- TODO: check if solution was found
-  defp make_move(robots, _board, []) do
+  # Given a list of robots and a boundary_board, find the set of legal moves for each robot.
+  defp calculate_moves(robots, _board) do
     robots
-    #calculate_moves(robots)
+  end
+
+  # Out of moves -- TODO: check if solution was found
+  defp make_move(robots, board, []) do
+    calculate_moves(robots, board)
   end
 
   defp make_move(robots, board, [headmove | tailmoves]) do
@@ -151,12 +199,22 @@ defmodule RicochetRobots.Game do
     end
   end
 
-  # TODO:
   #@doc "Given a robot position and direction, return a list of indices of any robots that the active robot will hit."
-  defp get_robot_blocked_indices(_robot_pos, _direction, _robots) do
-    []
+  defp get_robot_blocked_indices(robot_pos, direction, robots) do
+    %{x: rx, y: ry} = robot_pos
+    case direction do
+      :up ->
+        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx == rx && yy < ry) end), fn %{pos: %{y: yy}} -> yy+1 end)
+      :down ->
+        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx == rx && yy > ry) end), fn %{pos: %{y: yy}} -> yy-1 end)
+      :left ->
+        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx < rx && yy == ry) end), fn %{pos: %{x: xx}} -> xx+1 end)
+      :right ->
+        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx > rx && yy == ry) end), fn %{pos: %{x: xx}} -> xx-1 end)
+      _ ->
+        []
+    end
   end
-
 
   # TODO...
   def check_solution(_board, solution) do
@@ -185,7 +243,6 @@ defmodule RicochetRobots.Game do
      }}
   end
 
-  @doc ""
   @impl true
   def handle_cast({:solution_found, registry_key, num_robots, num_moves, uid}, state) do
     Room.system_chat(
