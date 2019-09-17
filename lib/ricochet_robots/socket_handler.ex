@@ -166,7 +166,7 @@ defmodule RicochetRobots.SocketHandler do
     ### Game.move("red", "left")
     # TODO: switch to solution mode iff solution found
 
-    new_robots = Game.move_robots(content)
+    new_robots = Game.move_robots(content, state.registry_key, state.player.unique_key)
     response = Poison.encode!(%{content: new_robots, action: "update_robots"})
     {:reply, {:text, response}, state}
   end

@@ -34,8 +34,6 @@ defmodule RicochetRobots.Game do
             solution_uid: 0
 
 
-
-  # TODO: use these or get rid of them? When is a type better than a defstruct?
   @typedoc "User: { username: String, color: String, score: integer }"
   @type user_t :: %{
     username: String.t(),
@@ -55,6 +53,28 @@ defmodule RicochetRobots.Game do
 
   @typedoc "Goal: { pos: position, symbol: String, active: boolean }"
   @type goal_t :: %{pos: position2_t, symbol: String.t(), active: boolean}
+
+  def getColorBySymbol(symbol) do
+    case symbol do
+      "RedMoon"      -> "red"
+      "GreenMoon"    -> "green"
+      "BlueMoon"     -> "blue"
+      "YellowMoon"   -> "yellow"
+      "RedPlanet"    -> "red"
+      "GreenPlanet"  -> "green"
+      "BluePlanet"   -> "blue"
+      "YellowPlanet" -> "yellow"
+      "GreenCross"   -> "green"
+      "RedCross"     -> "red"
+      "BlueCross"    -> "blue"
+      "YellowCross"  -> "yellow"
+      "RedGear"      -> "red"
+      "GreenGear"    -> "green"
+      "BlueGear"     -> "blue"
+      "YellowGear"   -> "yellow"
+      _ -> "unknown" # TODO: raise error
+    end
+  end
 
   @typedoc "Move"
   @type move_t :: %{color: String.t, direction: String.t}
@@ -137,12 +157,6 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:broadcast_clock, registry_key})
   end
 
-  @doc """
-  TODO: docs
-  """
-  def solution_found(registry_key, num_robots, num_moves, uid) do
-    GenServer.cast(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
-  end
 
   @doc """
   Award a point to the winning solution, but only if the solution is good enough.
@@ -164,17 +178,63 @@ defmodule RicochetRobots.Game do
   If a solution has been found, `solution_found/4` is called.
 
   """
-  @spec move_robots([move_t]) :: [robot_t]
-  def move_robots(moves) do
-    GenServer.call(__MODULE__, {:move_robots, moves})
+  @spec move_robots([move_t], integer, integer) :: [robot_t]
+  def move_robots(moves, registry_key, uid) do
+    { moved_robots, goals } = GenServer.call(__MODULE__, {:move_robots, moves})
+
+    {solution, solution_moves, solution_robots} = check_solution(moved_robots, goals)
+
+    if solution do
+      solution_found(registry_key, solution_robots, solution_moves, uid)
+    else
+      moved_robots
+    end
+
   end
 
   @impl true
   def handle_call({:move_robots, moves}, _from, state) do
     new_robots = make_move(state.robots, state.boundary_board, moves)
-    IO.inspect(new_robots)
-    {:reply, new_robots, state}
+    {:reply, {new_robots, state.goals}, state}
   end
+
+
+  @impl true
+  def handle_call({:solution_found, registry_key, num_robots, num_moves, uid}, _from, state) do
+    Room.system_chat(
+      registry_key,
+      "A #{num_robots}-robot, #{num_moves}-move solution has been found."
+    )
+
+    response =
+      Poison.encode!(%{
+        content: %{ timer: state.current_timer, countdown: state.current_countdown},
+        action: "switch_to_countdown"
+      })
+
+    Registry.RicochetRobots
+    |> Registry.dispatch(registry_key, fn entries ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+    setting_countdown = state.setting_countdown
+
+    # TODO: confirm this is the best!!!
+    return_state = %{
+      state
+      | solution_found: true,
+        solution_moves: num_moves,
+        solution_robots: num_robots,
+        solution_uid: uid,
+        current_countdown: setting_countdown
+    }
+
+    # return robots to original, but update the state with new solution
+    {:reply, state.robots, return_state}
+  end
+
 
   # Given a specific robot, a list of robots and a boundary_board, find the set of legal moves for each robot.
   defp calculate_moves(robot, robots, board) do
@@ -185,31 +245,27 @@ defmodule RicochetRobots.Game do
     move_right = if ( Enum.member?( robot_positions, %{x: vbx+1, y: vby}) || board[bby][bbx+1] == 1) do nil else "right" end
     move_up    = if ( Enum.member?( robot_positions, %{x: vbx, y: vby-1}) || board[bby-1][bbx] == 1) do nil else "up" end
     move_down  = if ( Enum.member?( robot_positions, %{x: vbx, y: vby+1}) || board[bby+1][bbx] == 1) do nil else "down" end
-
     moves = Enum.filter([move_left, move_right, move_up, move_down], & !is_nil(&1))
-   # IO.inspect(%{robot | moves: moves})
+
     %{robot | moves: moves}
   end
 
-  # Out of moves -- TODO: check if solution was found
+  # Out of moves; calcualte valid moveset
   defp make_move(robots, board, []) do
-    # Calculate valid moveset for each robot.
     Enum.map(robots, fn r -> calculate_moves(r, robots, board) end)
   end
 
   defp make_move(robots, board, [headmove | tailmoves]) do
     color = headmove["color"]
     direction = headmove["direction"]
-    Logger.debug("[Moving #{color} robot #{direction}]")
     moved_robot = Enum.find(robots, nil, fn r -> r.color == color end)
     %{x: rx, y: ry} = moved_robot[:pos]
 
-    # TODO: clean up?
     new_pos = case direction do
       "up" ->
         %{x: rx, y: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :up, board) | get_robot_blocked_indices(moved_robot[:pos], :up, robots)]))}
       "down" ->
-        %{x: rx, y: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)]))} # min([ wall-blocked, robot-blocked])
+        %{x: rx, y: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)]))}
       "left" ->
         %{x: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :left, board) | get_robot_blocked_indices(moved_robot[:pos], :left, robots)])), y: ry}
       "right" ->
@@ -257,17 +313,21 @@ defmodule RicochetRobots.Game do
     end
   end
 
-  # TODO...
-  def check_solution(_board, solution) do
-    GenServer.cast(__MODULE__, {:check_solution, solution})
+  @doc "Check if `robots` are at the active goal and update the state accordingly."
+  def check_solution(robots, goals) do
+    active_goal = Enum.find(goals, fn %{active: a} -> a end)
+    solution_found = Enum.any?(robots, fn %{color: c, pos: p} -> ( c == getColorBySymbol(active_goal.symbol) && p == active_goal.pos ) end)
+    { solution_found, 3, 3 } # TODO: 3, 3 -> num_moves, num_robots
   end
 
-  # TODO...
-  @impl true
-  def handle_cast({:check_solution, _solution}, state) do
-    # Solve it and broadcast results to sockets.
-    {:noreply, state}
+
+  @doc """
+  TODO: docs
+  """
+  def solution_found(registry_key, num_robots, num_moves, uid) do
+    GenServer.call(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
   end
+
 
   @impl true
   def handle_cast({:new_game}, state) do
@@ -284,38 +344,6 @@ defmodule RicochetRobots.Game do
      }}
   end
 
-  @impl true
-  def handle_cast({:solution_found, registry_key, num_robots, num_moves, uid}, state) do
-    Room.system_chat(
-      registry_key,
-      "A #{num_robots}-robot, #{num_moves}-move solution has been found."
-    )
-
-    response =
-      Poison.encode!(%{
-        content: %{ timer: state.current_timer, countdown: state.current_countdown},
-        action: "switch_to_countdown"
-      })
-
-    Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
-      for {pid, _} <- entries do
-        Process.send(pid, response, [])
-      end
-    end)
-
-    setting_countdown = state.setting_countdown
-
-    {:noreply,
-     %{
-       state
-       | solution_found: true,
-         solution_moves: num_moves,
-         solution_robots: num_robots,
-         solution_uid: uid,
-         current_countdown: setting_countdown
-     }}
-  end
 
   @doc "Determine the current clock mode, and send out a signal for clients to sync"
   @impl true
