@@ -1,4 +1,6 @@
 defmodule RicochetRobots.RoomSupervisor do
+  @moduledoc false
+
   use Supervisor
   require Logger
 

@@ -1,11 +1,33 @@
 defmodule RicochetRobots.Player do
-  defstruct username: nil,
-            color: "#c6c6c6",
-            score: 0,
-            is_admin: false,
-            is_muted: false,
-            joined: nil,
-            unique_key: 0
+  @moduledoc """
+  A `Player` is a user, including any relevant settings or information.
+  """
+
+  defstruct [
+    username: nil,
+    color: "#c6c6c6",
+    score: 0,
+    is_admin: false,
+    is_muted: false,
+    joined: nil,
+    unique_key: 0
+  ]
+
+  @typedoc """
+  A player.
+
+  Some special keys:
+  * `color`: An RGB color hexidecimal string such as `#aabbcc`.
+  """
+  @type t :: %__MODULE__{
+    username: nil | String.t,
+    color: nil | String.t,
+    score: integer,
+    is_admin: boolean,
+    is_muted: boolean,
+    joined: nil | DateTime.t,
+    unique_key: integer
+  }
 
   # TODO: take list of previous names and verify unique?
   @doc "Return a new user with unique, randomized name"
