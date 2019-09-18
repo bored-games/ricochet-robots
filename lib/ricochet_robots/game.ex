@@ -115,6 +115,7 @@ defmodule RicochetRobots.Game do
     broadcast_visual_board(registry_key)
     broadcast_robots(registry_key)
     broadcast_goals(registry_key)
+    broadcast_clock(registry_key)
   end
 
   @doc """
@@ -165,8 +166,8 @@ defmodule RicochetRobots.Game do
   to earn a point. All solutions involves more than two robots are scored.
 
   """
-  def award_points(registry_key, num_robots, num_moves, uid) do
-    GenServer.cast(__MODULE__, {:award_points, registry_key, num_robots, num_moves, uid})
+  def award_points(registry_key) do
+    GenServer.cast(__MODULE__, {:award_points, registry_key})
   end
 
 
@@ -182,14 +183,11 @@ defmodule RicochetRobots.Game do
   def move_robots(moves, registry_key, uid) do
     { moved_robots, goals } = GenServer.call(__MODULE__, {:move_robots, moves})
 
-    {solution, solution_moves, solution_robots} = check_solution(moved_robots, goals)
-
-    if solution do
-      solution_found(registry_key, solution_robots, solution_moves, uid)
+    if check_solution(moved_robots, goals) do
+      solution_found(registry_key, Enum.count( Enum.uniq_by(moves, fn %{"color" => c} -> c end) ), Enum.count(moves), uid)
     else
       moved_robots
     end
-
   end
 
   @impl true
@@ -201,37 +199,39 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def handle_call({:solution_found, registry_key, num_robots, num_moves, uid}, _from, state) do
-    Room.system_chat(
-      registry_key,
-      "A #{num_robots}-robot, #{num_moves}-move solution has been found."
-    )
 
-    response =
-      Poison.encode!(%{
-        content: %{ timer: state.current_timer, countdown: state.current_countdown},
-        action: "switch_to_countdown"
-      })
+    return_state =
+      if (state.solution_found) do
+        if ( num_moves < state.solution_moves || (num_moves == state.solution_moves && num_robots > state.solution_robots )) do
+          Room.system_chat(
+            registry_key,
+            "An improved, #{num_robots}-robot, #{num_moves}-move solution has been found."
+          )
+          %{
+            state
+            | solution_moves: num_moves,
+              solution_robots: num_robots,
+              solution_uid: uid,
+          }
+        else
+          state
+        end
+    else
+      Room.system_chat(
+        registry_key,
+        "A #{num_robots}-robot, #{num_moves}-move solution has been found."
+      )
 
-    Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
-      for {pid, _} <- entries do
-        Process.send(pid, response, [])
-      end
-    end)
+      %{
+        state
+        | solution_found: true,
+          solution_moves: num_moves,
+          solution_robots: num_robots,
+          solution_uid: uid,
+      }
+    end
 
-    setting_countdown = state.setting_countdown
-
-    # TODO: confirm this is the best!!!
-    return_state = %{
-      state
-      | solution_found: true,
-        solution_moves: num_moves,
-        solution_robots: num_robots,
-        solution_uid: uid,
-        current_countdown: setting_countdown
-    }
-
-    # return robots to original, but update the state with new solution
+    # return robots to original locations, but update the state with new solution
     {:reply, state.robots, return_state}
   end
 
@@ -316,8 +316,7 @@ defmodule RicochetRobots.Game do
   @doc "Check if `robots` are at the active goal and update the state accordingly."
   def check_solution(robots, goals) do
     active_goal = Enum.find(goals, fn %{active: a} -> a end)
-    solution_found = Enum.any?(robots, fn %{color: c, pos: p} -> ( c == getColorBySymbol(active_goal.symbol) && p == active_goal.pos ) end)
-    { solution_found, 3, 3 } # TODO: 3, 3 -> num_moves, num_robots
+    Enum.any?(robots, fn %{color: c, pos: p} -> ( c == getColorBySymbol(active_goal.symbol) && p == active_goal.pos ) end)
   end
 
 
@@ -325,7 +324,9 @@ defmodule RicochetRobots.Game do
   TODO: docs
   """
   def solution_found(registry_key, num_robots, num_moves, uid) do
-    GenServer.call(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
+    return_robots = GenServer.call(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
+    broadcast_clock(registry_key)
+    return_robots
   end
 
 
@@ -340,7 +341,9 @@ defmodule RicochetRobots.Game do
        | boundary_board: boundary_board,
          visual_board: visual_board,
          goals: goals,
-         robots: robots
+         robots: robots,
+         current_timer: 0,
+         current_countdown: state.setting_countdown
      }}
   end
 
@@ -373,35 +376,12 @@ defmodule RicochetRobots.Game do
 
   @doc ""
   @impl true
-  def handle_cast({:award_points, registry_key, _num_robots, _num_moves, _uid}, state) do
-    # ADD 1 PT TO WINNER, IFF SOLUTION WAS GOOD ENOUGH
+  def handle_cast({:award_points, registry_key}, state) do
 
-    #   Room.system_chat(registry_key, "User has won with a #{robots}-robot, #{moves}-move solution.")
-    response =
-      Poison.encode!(%{
-        content: %{timer: state.current_timer, countdown: state.setting_countdown},
-        action: "switch_to_timer"
-      })
+    # TODO: ADD 1 PT TO WINNER, IFF SOLUTION WAS GOOD ENOUGH
+    Room.system_chat(registry_key, "User won with a #{robots}-robot, #{moves}-move solution.")
 
-    Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
-      for {pid, _} <- entries do
-        Process.send(pid, response, [])
-      end
-    end)
-
-    reset_countdown = state.setting_countdown
-
-    {:noreply,
-     %{
-       state
-       | solution_found: false,
-         solution_moves: 0,
-         solution_robots: 0,
-         solution_uid: 0,
-         current_countdown: reset_countdown,
-         current_timer: 0
-     }}
+    {:noreply, state}
   end
 
   @impl true
@@ -459,7 +439,9 @@ defmodule RicochetRobots.Game do
 
     new_timer = state.current_timer + 1
 
-    # if state.current_countdown <= 0...
+    if new_countdown <= 0 do
+      award_points()xxx
+    end
 
     {:noreply, %{state | current_countdown: new_countdown, current_timer: new_timer}}
   end
