@@ -15,13 +15,13 @@ defmodule RicochetRobots.Room do
 
   @doc false
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+    GenServer.start_link(__MODULE__, %{room_name: "Pizza Party"}, name: __MODULE__)
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     Logger.debug("[Room: Started Room]")
-    new_room = %__MODULE__{name: "Pizza House"}
+    new_room = %__MODULE__{name: opts.room_name}
     {:ok, new_room}
   end
 
@@ -43,10 +43,17 @@ defmodule RicochetRobots.Room do
   @doc """
   Update (replace) a user.
 
-  `key`: the unique key for the user to be replaced.
+  `user`: the modified user to update based on its unique key.
   """
-  def update_user(key) do
-    GenServer.cast(__MODULE__, {:update_user, key})
+  def update_user(user) do
+    GenServer.cast(__MODULE__, {:update_user, user})
+  end
+
+  @doc """
+  Find and return a user by their unique `key`.
+  """
+  def get_user(key) do
+    GenServer.call(__MODULE__, {:get_user, key})
   end
 
   @doc """
@@ -87,7 +94,7 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:create_game}, state) do
-    game = RicochetRobots.GameSupervisor.start_link(RicochetRobots.GameSupervisor)
+    game = RicochetRobots.GameSupervisor.start_link("/ws/robots123") # TODO: THIS SHOULD NOT BE HARDCODED
     {:noreply, Map.put(state, :game, game)}
   end
 
@@ -118,7 +125,6 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:broadcast_scoreboard, registry_key}, state) do
-    Logger.debug("[Get scoreboard]")
     response = Poison.encode!(%{content: state.users, action: "update_scoreboard"})
 
     Registry.RicochetRobots
@@ -190,4 +196,14 @@ defmodule RicochetRobots.Room do
     state = %{state | chat: [message | state.chat]}
     {:noreply, state}
   end
+
+
+
+  @impl true
+  def handle_call({:get_user, key}, _from, state) do
+    user = Enum.find(state.users, fn u -> u.unique_key == key end)
+    {:reply, user, state}
+  end
+
+
 end

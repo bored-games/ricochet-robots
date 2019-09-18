@@ -8,12 +8,13 @@ defmodule RicochetRobots.Game do
   require Logger
   alias RicochetRobots.Room, as: Room
 
-  defstruct boundary_board: nil,
+  defstruct registry_key: nil,
+            boundary_board: nil,
             visual_board: nil,
             robots: [],
             goals: [],
             # time in seconds after a solution is found
-            setting_countdown: 60,
+            setting_countdown: 6, # 60, 6 for testing
             # 1-robot solutions below this value should not count
             setting_min_moves: 3,
             # new board generated ever `n` many puzzles
@@ -21,7 +22,7 @@ defmodule RicochetRobots.Game do
             # new board generated after this many more puzzles
             current_puzzles_until_new: 10,
             # current countdown: at 0, best solution wins
-            current_countdown: 60,
+            current_countdown: 6,
             # current timer
             current_timer: 0,
             # boolean: has solution been found
@@ -64,8 +65,8 @@ defmodule RicochetRobots.Game do
       "GreenPlanet"  -> "green"
       "BluePlanet"   -> "blue"
       "YellowPlanet" -> "yellow"
-      "GreenCross"   -> "green"
       "RedCross"     -> "red"
+      "GreenCross"   -> "green"
       "BlueCross"    -> "blue"
       "YellowCross"  -> "yellow"
       "RedGear"      -> "red"
@@ -82,18 +83,19 @@ defmodule RicochetRobots.Game do
 
 
   @doc false
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   @impl true
-  def init(_) do
+  def init(opts) do
     Logger.debug("[Game: Started game]")
     :timer.send_interval(1000, :timerevent)
     {visual_board, boundary_board, goals} = populate_board()
     robots = populate_robots()
 
     state = %__MODULE__{
+      registry_key: opts.registry_key,
       boundary_board: boundary_board,
       visual_board: visual_board,
       goals: goals,
@@ -109,13 +111,13 @@ defmodule RicochetRobots.Game do
   Broadcast new game information and clear all move queues.
 
   """
-  def new_game(registry_key) do
+  def new_game() do
     Logger.debug("[Game: New game]")
     GenServer.cast(__MODULE__, {:new_game})
-    broadcast_visual_board(registry_key)
-    broadcast_robots(registry_key)
-    broadcast_goals(registry_key)
-    broadcast_clock(registry_key)
+    broadcast_visual_board()
+    broadcast_robots()
+    broadcast_goals()
+    broadcast_clock()
   end
 
   @doc """
@@ -124,24 +126,24 @@ defmodule RicochetRobots.Game do
   The visual board is the coded representation of the grid of spaces and walls.
 
   """
-  def broadcast_visual_board(registry_key) do
-    GenServer.cast(__MODULE__, {:broadcast_visual_board, registry_key})
+  def broadcast_visual_board() do
+    GenServer.cast(__MODULE__, {:broadcast_visual_board})
   end
 
   @doc """
   Send out the robot starting positions, including available move directions.
 
   """
-  def broadcast_robots(registry_key) do
-    GenServer.cast(__MODULE__, {:broadcast_robots, registry_key})
+  def broadcast_robots() do
+    GenServer.cast(__MODULE__, {:broadcast_robots})
   end
 
   @doc """
   Send out the current goal positions and the active goal symbol.
 
   """
-  def broadcast_goals(registry_key) do
-    GenServer.cast(__MODULE__, {:broadcast_goals, registry_key})
+  def broadcast_goals() do
+    GenServer.cast(__MODULE__, {:broadcast_goals})
   end
 
   @doc """
@@ -154,8 +156,8 @@ defmodule RicochetRobots.Game do
   broadcast the true timer information. Otherwise, the client can handle ticking the timer.
 
   """
-  def broadcast_clock(registry_key) do
-    GenServer.cast(__MODULE__, {:broadcast_clock, registry_key})
+  def broadcast_clock() do
+    GenServer.cast(__MODULE__, {:broadcast_clock})
   end
 
 
@@ -166,8 +168,8 @@ defmodule RicochetRobots.Game do
   to earn a point. All solutions involves more than two robots are scored.
 
   """
-  def award_points(registry_key) do
-    GenServer.cast(__MODULE__, {:award_points, registry_key})
+  def award_points() do
+    GenServer.cast(__MODULE__, {:award_points})
   end
 
 
@@ -176,15 +178,15 @@ defmodule RicochetRobots.Game do
 
   Returns the final positions of the robots and the set of new valid moves.
 
-  If a solution has been found, `solution_found/4` is called.
+  If a solution has been found, `solution_found/3` is called.
 
   """
-  @spec move_robots([move_t], integer, integer) :: [robot_t]
-  def move_robots(moves, registry_key, uid) do
+  @spec move_robots([move_t], integer) :: [robot_t]
+  def move_robots(moves, uid) do
     { moved_robots, goals } = GenServer.call(__MODULE__, {:move_robots, moves})
 
     if check_solution(moved_robots, goals) do
-      solution_found(registry_key, Enum.count( Enum.uniq_by(moves, fn %{"color" => c} -> c end) ), Enum.count(moves), uid)
+      solution_found(Enum.count( Enum.uniq_by(moves, fn %{"color" => c} -> c end) ), Enum.count(moves), uid)
     else
       moved_robots
     end
@@ -198,13 +200,13 @@ defmodule RicochetRobots.Game do
 
 
   @impl true
-  def handle_call({:solution_found, registry_key, num_robots, num_moves, uid}, _from, state) do
+  def handle_call({:solution_found, num_robots, num_moves, uid}, _from, state) do
 
     return_state =
       if (state.solution_found) do
         if ( num_moves < state.solution_moves || (num_moves == state.solution_moves && num_robots > state.solution_robots )) do
           Room.system_chat(
-            registry_key,
+            state.registry_key,
             "An improved, #{num_robots}-robot, #{num_moves}-move solution has been found."
           )
           %{
@@ -218,7 +220,7 @@ defmodule RicochetRobots.Game do
         end
     else
       Room.system_chat(
-        registry_key,
+        state.registry_key,
         "A #{num_robots}-robot, #{num_moves}-move solution has been found."
       )
 
@@ -323,9 +325,9 @@ defmodule RicochetRobots.Game do
   @doc """
   TODO: docs
   """
-  def solution_found(registry_key, num_robots, num_moves, uid) do
-    return_robots = GenServer.call(__MODULE__, {:solution_found, registry_key, num_robots, num_moves, uid})
-    broadcast_clock(registry_key)
+  def solution_found(num_robots, num_moves, uid) do
+    return_robots = GenServer.call(__MODULE__, {:solution_found, num_robots, num_moves, uid})
+    broadcast_clock()
     return_robots
   end
 
@@ -335,6 +337,8 @@ defmodule RicochetRobots.Game do
     {visual_board, boundary_board, goals} = populate_board()
     robots = populate_robots()
 
+    #TODO: decrement games before new shuffle.
+
     {:noreply,
      %{
        state
@@ -343,14 +347,18 @@ defmodule RicochetRobots.Game do
          goals: goals,
          robots: robots,
          current_timer: 0,
-         current_countdown: state.setting_countdown
+         current_countdown: state.setting_countdown,
+         solution_found: false,
+         solution_moves: 0,
+         solution_robots: 0,
+         solution_uid: 0
      }}
   end
 
 
   @doc "Determine the current clock mode, and send out a signal for clients to sync"
   @impl true
-  def handle_cast({:broadcast_clock, registry_key}, state) do
+  def handle_cast({:broadcast_clock}, state) do
 
     response = if (state.solution_found) do
         Poison.encode!(%{
@@ -365,7 +373,7 @@ defmodule RicochetRobots.Game do
     end
 
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
+    |> Registry.dispatch(state.registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
@@ -376,20 +384,26 @@ defmodule RicochetRobots.Game do
 
   @doc ""
   @impl true
-  def handle_cast({:award_points, registry_key}, state) do
-
-    # TODO: ADD 1 PT TO WINNER, IFF SOLUTION WAS GOOD ENOUGH
-    Room.system_chat(registry_key, "User won with a #{robots}-robot, #{moves}-move solution.")
+  def handle_cast({:award_points}, state) do
+    winner = Room.get_user(state.solution_uid)
+    if (state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves) do
+      Room.system_chat(state.registry_key, "#{winner.username} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")
+      return_user = %{winner | score: winner.score + 1 }
+      Room.update_user(return_user)
+      Room.broadcast_scoreboard(state.registry_key)
+    else
+      Room.system_chat(state.registry_key, "#{winner.username} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points.")
+    end
 
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast({:broadcast_visual_board, registry_key}, state) do
+  def handle_cast({:broadcast_visual_board}, state) do
     response = Poison.encode!(%{content: state.visual_board, action: "update_board"})
 
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
+    |> Registry.dispatch(state.registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
@@ -399,11 +413,11 @@ defmodule RicochetRobots.Game do
   end
 
   @impl true
-  def handle_cast({:broadcast_robots, registry_key}, state) do
+  def handle_cast({:broadcast_robots}, state) do
     response = Poison.encode!(%{content: state.robots, action: "update_robots"})
 
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
+    |> Registry.dispatch(state.registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
@@ -413,11 +427,11 @@ defmodule RicochetRobots.Game do
   end
 
   @impl true
-  def handle_cast({:broadcast_goals, registry_key}, state) do
+  def handle_cast({:broadcast_goals}, state) do
     response = Poison.encode!(%{content: state.goals, action: "update_goals"})
 
     Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
+    |> Registry.dispatch(state.registry_key, fn entries ->
       for {pid, _} <- entries do
         Process.send(pid, response, [])
       end
@@ -440,7 +454,9 @@ defmodule RicochetRobots.Game do
     new_timer = state.current_timer + 1
 
     if new_countdown <= 0 do
-      award_points()xxx
+      award_points()
+      # TODO: some kind of display!!!
+      new_game()
     end
 
     {:noreply, %{state | current_countdown: new_countdown, current_timer: new_timer}}
@@ -477,8 +493,8 @@ defmodule RicochetRobots.Game do
         "GreenPlanet",
         "BluePlanet",
         "YellowPlanet",
-        "GreenCross",
         "RedCross",
+        "GreenCross",
         "BlueCross",
         "YellowCross",
         "RedGear",

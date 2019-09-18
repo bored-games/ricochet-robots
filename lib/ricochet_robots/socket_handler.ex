@@ -75,7 +75,7 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "new_game", _content}, state) do
     Logger.debug("[New game] ")
-    Game.new_game(state.registry_key)
+    Game.new_game()
     Room.system_chat(state.registry_key, "New game started by #{state.player.username}.")
     {:reply, {:text, "success"}, state}
   end
@@ -95,10 +95,10 @@ defmodule RicochetRobots.SocketHandler do
 
     Room.broadcast_scoreboard(state.registry_key)
 
-    Game.broadcast_visual_board(state.registry_key)
-    Game.broadcast_robots(state.registry_key)
-    Game.broadcast_goals(state.registry_key)
-    Game.broadcast_clock(state.registry_key)
+    Game.broadcast_visual_board()
+    Game.broadcast_robots()
+    Game.broadcast_goals()
+    Game.broadcast_clock()
 
     # send out user initialization info to client
     response = Poison.encode!(%{content: state[:player], action: "update_user"})
@@ -109,15 +109,6 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
     Room.user_chat(state.registry_key, state.player, content["msg"])
-
-    # TEMPORARY:
-    if content["msg"] == "a" do
-      Game.solution_found(state.registry_key, 3, 13, 12345)
-    end
-
-    if content["msg"] == "b" do
-      Game.award_points(state.registry_key, 3, 13, 12345)
-    end
 
     {:reply, {:text, "success"}, state}
   end
@@ -166,7 +157,7 @@ defmodule RicochetRobots.SocketHandler do
     ### Game.move("red", "left")
     # TODO: switch to solution mode iff solution found
 
-    new_robots = Game.move_robots(content, state.registry_key, state.player.unique_key)
+    new_robots = Game.move_robots(content, state.player.unique_key)
     response = Poison.encode!(%{content: new_robots, action: "update_robots"})
     {:reply, {:text, response}, state}
   end
