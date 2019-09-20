@@ -118,6 +118,7 @@ defmodule RicochetRobots.Game do
     broadcast_robots()
     broadcast_goals()
     broadcast_clock()
+    clear_moves()
   end
 
   @doc """
@@ -160,6 +161,15 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:broadcast_clock})
   end
 
+  @doc """
+  Send out command to clear queue of moves.
+
+  At a new game, for example, all queued moves should be forced to clear.
+  """
+  def clear_moves() do
+    GenServer.cast(__MODULE__, {:clear_moves})
+  end
+
 
   @doc """
   Award a point to the winning solution, but only if the solution is good enough.
@@ -200,7 +210,7 @@ defmodule RicochetRobots.Game do
 
 
   @impl true
-  def handle_call({:solution_found, num_robots, num_moves, uid}, _from, state) do
+  def handle_call({:solution_found, num_robots, num_moves, uid}, from, state) do
 
     return_state =
       if (state.solution_found) do
@@ -223,6 +233,22 @@ defmodule RicochetRobots.Game do
         state.registry_key,
         "A #{num_robots}-robot, #{num_moves}-move solution has been found."
       )
+
+
+      response =
+        Poison.encode!(%{
+          content: "",
+          action: "clear_moves_queue"
+        })
+
+      Registry.RicochetRobots
+      |> Registry.dispatch(state.registry_key, fn entries ->
+        for {pid, _} <- entries do
+          if pid == (from |> elem(0)) do
+            Process.send(pid, response, [])
+          end
+        end
+      end)
 
       %{
         state
@@ -371,6 +397,27 @@ defmodule RicochetRobots.Game do
           action: "switch_to_timer"
         })
     end
+
+    Registry.RicochetRobots
+    |> Registry.dispatch(state.registry_key, fn entries ->
+      for {pid, _} <- entries do
+        Process.send(pid, response, [])
+      end
+    end)
+
+    {:noreply, state}
+  end
+
+
+  @doc "Determine the current clock mode, and send out a signal for clients to sync"
+  @impl true
+  def handle_cast({:clear_moves}, state) do
+
+    response =
+        Poison.encode!(%{
+          content: "",
+          action: "clear_moves_queue"
+        })
 
     Registry.RicochetRobots
     |> Registry.dispatch(state.registry_key, fn entries ->

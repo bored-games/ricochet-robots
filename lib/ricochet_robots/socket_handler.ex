@@ -153,10 +153,6 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "submit_movelist", content}, state) do
     Logger.debug("[Move] " <> state[:player].username <> " --> ")
 
-    # TODO: simulate the moves starting with true game board
-    ### Game.move("red", "left")
-    # TODO: switch to solution mode iff solution found
-
     new_robots = Game.move_robots(content, state.player.unique_key)
     response = Poison.encode!(%{content: new_robots, action: "update_robots"})
     {:reply, {:text, response}, state}

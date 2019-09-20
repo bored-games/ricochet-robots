@@ -139,8 +139,6 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:user_chat, registry_key, user, message}, state) do
-    Logger.debug("[User chat] <#{user.username}> #{message}")
-
     response =
       Poison.encode!(%{content: %{user: user, msg: message, kind: 0}, action: "update_chat"})
 
@@ -159,8 +157,6 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:system_chat, registry_key, message, {pidmatch, message2}}, state) do
-    Logger.debug("[System chat] #{message}")
-
     system_user = %{
       username: "System",
       color: "#c6c6c6",
