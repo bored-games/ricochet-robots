@@ -14,7 +14,8 @@ defmodule RicochetRobots.Game do
             robots: [],
             goals: [],
             # time in seconds after a solution is found
-            setting_countdown: 6, # 60, 6 for testing
+            # 60, 6 for testing
+            setting_countdown: 6,
             # 1-robot solutions below this value should not count
             setting_min_moves: 3,
             # new board generated ever `n` many puzzles
@@ -34,14 +35,13 @@ defmodule RicochetRobots.Game do
             # user id of current best solution
             solution_uid: 0
 
-
   @typedoc "User: { username: String, color: String, score: integer }"
   @type user_t :: %{
-    username: String.t(),
-    color: String.t(),
-    score: integer,
-    datestr: DateTime.t()
-  }
+          username: String.t(),
+          color: String.t(),
+          score: integer,
+          datestr: DateTime.t()
+        }
 
   @typedoc "Position: { row: Integer, col: Integer }"
   @type position_t :: {integer, integer}
@@ -57,30 +57,29 @@ defmodule RicochetRobots.Game do
 
   def getColorBySymbol(symbol) do
     case symbol do
-      "RedMoon"      -> "red"
-      "GreenMoon"    -> "green"
-      "BlueMoon"     -> "blue"
-      "YellowMoon"   -> "yellow"
-      "RedPlanet"    -> "red"
-      "GreenPlanet"  -> "green"
-      "BluePlanet"   -> "blue"
+      "RedMoon" -> "red"
+      "GreenMoon" -> "green"
+      "BlueMoon" -> "blue"
+      "YellowMoon" -> "yellow"
+      "RedPlanet" -> "red"
+      "GreenPlanet" -> "green"
+      "BluePlanet" -> "blue"
       "YellowPlanet" -> "yellow"
-      "RedCross"     -> "red"
-      "GreenCross"   -> "green"
-      "BlueCross"    -> "blue"
-      "YellowCross"  -> "yellow"
-      "RedGear"      -> "red"
-      "GreenGear"    -> "green"
-      "BlueGear"     -> "blue"
-      "YellowGear"   -> "yellow"
-      _ -> "unknown" # TODO: raise error
+      "RedCross" -> "red"
+      "GreenCross" -> "green"
+      "BlueCross" -> "blue"
+      "YellowCross" -> "yellow"
+      "RedGear" -> "red"
+      "GreenGear" -> "green"
+      "BlueGear" -> "blue"
+      "YellowGear" -> "yellow"
+      # TODO: raise error
+      _ -> "unknown"
     end
   end
 
   @typedoc "Move"
-  @type move_t :: %{color: String.t, direction: String.t}
-
-
+  @type move_t :: %{color: String.t(), direction: String.t()}
 
   @doc false
   def start_link(opts) do
@@ -170,7 +169,6 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:clear_moves})
   end
 
-
   @doc """
   Award a point to the winning solution, but only if the solution is good enough.
 
@@ -182,7 +180,6 @@ defmodule RicochetRobots.Game do
     GenServer.cast(__MODULE__, {:award_points})
   end
 
-
   @doc """
   Given a list of moves, move the robots; then calculate_new_moves();
 
@@ -193,10 +190,14 @@ defmodule RicochetRobots.Game do
   """
   @spec move_robots([move_t], integer) :: [robot_t]
   def move_robots(moves, uid) do
-    { moved_robots, goals } = GenServer.call(__MODULE__, {:move_robots, moves})
+    {moved_robots, goals} = GenServer.call(__MODULE__, {:move_robots, moves})
 
     if check_solution(moved_robots, goals) do
-      solution_found(Enum.count( Enum.uniq_by(moves, fn %{"color" => c} -> c end) ), Enum.count(moves), uid)
+      solution_found(
+        Enum.count(Enum.uniq_by(moves, fn %{"color" => c} -> c end)),
+        Enum.count(moves),
+        uid
+      )
     else
       moved_robots
     end
@@ -208,72 +209,95 @@ defmodule RicochetRobots.Game do
     {:reply, {new_robots, state.goals}, state}
   end
 
-
   @impl true
   def handle_call({:solution_found, num_robots, num_moves, uid}, from, state) do
-
     return_state =
-      if (state.solution_found) do
-        if ( num_moves < state.solution_moves || (num_moves == state.solution_moves && num_robots > state.solution_robots )) do
+      if state.solution_found do
+        if num_moves < state.solution_moves ||
+             (num_moves == state.solution_moves && num_robots > state.solution_robots) do
           Room.system_chat(
             state.registry_key,
             "An improved, #{num_robots}-robot, #{num_moves}-move solution has been found."
           )
+
           %{
             state
             | solution_moves: num_moves,
               solution_robots: num_robots,
-              solution_uid: uid,
+              solution_uid: uid
           }
         else
           state
         end
-    else
-      Room.system_chat(
-        state.registry_key,
-        "A #{num_robots}-robot, #{num_moves}-move solution has been found."
-      )
+      else
+        Room.system_chat(
+          state.registry_key,
+          "A #{num_robots}-robot, #{num_moves}-move solution has been found."
+        )
 
+        response =
+          Poison.encode!(%{
+            content: "",
+            action: "clear_moves_queue"
+          })
 
-      response =
-        Poison.encode!(%{
-          content: "",
-          action: "clear_moves_queue"
-        })
-
-      Registry.RicochetRobots
-      |> Registry.dispatch(state.registry_key, fn entries ->
-        for {pid, _} <- entries do
-          if pid == (from |> elem(0)) do
-            Process.send(pid, response, [])
+        Registry.RicochetRobots
+        |> Registry.dispatch(state.registry_key, fn entries ->
+          for {pid, _} <- entries do
+            if pid == from |> elem(0) do
+              Process.send(pid, response, [])
+            end
           end
-        end
-      end)
+        end)
 
-      %{
-        state
-        | solution_found: true,
-          solution_moves: num_moves,
-          solution_robots: num_robots,
-          solution_uid: uid,
-      }
-    end
+        %{
+          state
+          | solution_found: true,
+            solution_moves: num_moves,
+            solution_robots: num_robots,
+            solution_uid: uid
+        }
+      end
 
     # return robots to original locations, but update the state with new solution
     {:reply, state.robots, return_state}
   end
 
-
   # Given a specific robot, a list of robots and a boundary_board, find the set of legal moves for each robot.
   defp calculate_moves(robot, robots, board) do
     %{x: vbx, y: vby} = robot.pos
-    %{x: bbx, y: bby} = %{y: (2*vby + 1), x: round(2*vbx + 1)}
+    %{x: bbx, y: bby} = %{y: 2 * vby + 1, x: round(2 * vbx + 1)}
     robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
-    move_left  = if ( Enum.member?( robot_positions, %{x: vbx-1, y: vby}) || board[bby][bbx-1] == 1) do nil else "left" end
-    move_right = if ( Enum.member?( robot_positions, %{x: vbx+1, y: vby}) || board[bby][bbx+1] == 1) do nil else "right" end
-    move_up    = if ( Enum.member?( robot_positions, %{x: vbx, y: vby-1}) || board[bby-1][bbx] == 1) do nil else "up" end
-    move_down  = if ( Enum.member?( robot_positions, %{x: vbx, y: vby+1}) || board[bby+1][bbx] == 1) do nil else "down" end
-    moves = Enum.filter([move_left, move_right, move_up, move_down], & !is_nil(&1))
+
+    move_left =
+      if Enum.member?(robot_positions, %{x: vbx - 1, y: vby}) || board[bby][bbx - 1] == 1 do
+        nil
+      else
+        "left"
+      end
+
+    move_right =
+      if Enum.member?(robot_positions, %{x: vbx + 1, y: vby}) || board[bby][bbx + 1] == 1 do
+        nil
+      else
+        "right"
+      end
+
+    move_up =
+      if Enum.member?(robot_positions, %{x: vbx, y: vby - 1}) || board[bby - 1][bbx] == 1 do
+        nil
+      else
+        "up"
+      end
+
+    move_down =
+      if Enum.member?(robot_positions, %{x: vbx, y: vby + 1}) || board[bby + 1][bbx] == 1 do
+        nil
+      else
+        "down"
+      end
+
+    moves = Enum.filter([move_left, move_right, move_up, move_down], &(!is_nil(&1)))
 
     %{robot | moves: moves}
   end
@@ -289,53 +313,173 @@ defmodule RicochetRobots.Game do
     moved_robot = Enum.find(robots, nil, fn r -> r.color == color end)
     %{x: rx, y: ry} = moved_robot[:pos]
 
-    new_pos = case direction do
-      "up" ->
-        %{x: rx, y: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :up, board) | get_robot_blocked_indices(moved_robot[:pos], :up, robots)]))}
-      "down" ->
-        %{x: rx, y: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)]))}
-      "left" ->
-        %{x: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :left, board) | get_robot_blocked_indices(moved_robot[:pos], :left, robots)])), y: ry}
-      "right" ->
-        %{x: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :right, board) | get_robot_blocked_indices(moved_robot[:pos], :right, robots)])), y: ry}
-      _ ->
-        %{x: rx, y: ry}
-    end
+    new_pos =
+      case direction do
+        "up" ->
+          %{
+            x: rx,
+            y:
+              round(
+                Enum.max([
+                  get_wall_blocked_indices(moved_robot[:pos], :up, board)
+                  | get_robot_blocked_indices(moved_robot[:pos], :up, robots)
+                ])
+              )
+          }
+
+        "down" ->
+          %{
+            x: rx,
+            y:
+              round(
+                Enum.min([
+                  get_wall_blocked_indices(moved_robot[:pos], :down, board)
+                  | get_robot_blocked_indices(moved_robot[:pos], :down, robots)
+                ])
+              )
+          }
+
+        "left" ->
+          %{
+            x:
+              round(
+                Enum.max([
+                  get_wall_blocked_indices(moved_robot[:pos], :left, board)
+                  | get_robot_blocked_indices(moved_robot[:pos], :left, robots)
+                ])
+              ),
+            y: ry
+          }
+
+        "right" ->
+          %{
+            x:
+              round(
+                Enum.min([
+                  get_wall_blocked_indices(moved_robot[:pos], :right, board)
+                  | get_robot_blocked_indices(moved_robot[:pos], :right, robots)
+                ])
+              ),
+            y: ry
+          }
+
+        _ ->
+          %{x: rx, y: ry}
+      end
 
     moved_robot = %{moved_robot | pos: new_pos}
-    new_robots = Enum.map(robots, fn r -> if r.color == color do moved_robot else r end end)
+
+    new_robots =
+      Enum.map(robots, fn r ->
+        if r.color == color do
+          moved_robot
+        else
+          r
+        end
+      end)
+
     make_move(new_robots, board, tailmoves)
   end
 
-  #@doc "Given a robot position and direction, return the relevant index of the first wall the robot will hit."
+  # @doc "Given a robot position and direction, return the relevant index of the first wall the robot will hit."
   defp get_wall_blocked_indices(vb_pos, direction, board) do
-    bb_pos = %{row: round(2*vb_pos[:y] + 1), col: round(2*vb_pos[:x] + 1)}
+    bb_pos = %{row: round(2 * vb_pos[:y] + 1), col: round(2 * vb_pos[:x] + 1)}
+
     case direction do
       :up ->
-        Enum.max( Enum.map( Enum.filter( (for z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]}), fn {a, b} -> (b == 1 && a < bb_pos[:row]) end), fn {a, _b} -> a end ) )/2 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+        # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+        Enum.max(
+          Enum.map(
+            Enum.filter(for(z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]}), fn {a, b} ->
+              b == 1 && a < bb_pos[:row]
+            end),
+            fn {a, _b} -> a end
+          )
+        ) / 2
+
       :down ->
-        Enum.min( Enum.map( Enum.filter( (for z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]}), fn {a, b} -> (b == 1 && a > bb_pos[:row]) end), fn {a, _b} -> a end ) )/2 - 1 # min( all rows where row > bb_pos[:row] and cell == 1   )/2-1
+        # min( all rows where row > bb_pos[:row] and cell == 1   )/2-1
+        Enum.min(
+          Enum.map(
+            Enum.filter(for(z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]}), fn {a, b} ->
+              b == 1 && a > bb_pos[:row]
+            end),
+            fn {a, _b} -> a end
+          )
+        ) / 2 - 1
+
       :left ->
-        Enum.max( Enum.map( Enum.filter( board[bb_pos[:row]], fn {a, b} -> (b == 1 && a < bb_pos[:col]) end), fn {a, _b} -> a end ) )/2 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+        # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+        Enum.max(
+          Enum.map(
+            Enum.filter(board[bb_pos[:row]], fn {a, b} -> b == 1 && a < bb_pos[:col] end),
+            fn {a, _b} -> a end
+          )
+        ) / 2
+
       :right ->
-        Enum.min( Enum.map( Enum.filter( board[bb_pos[:row]], fn {a, b} -> (b == 1 && a > bb_pos[:col]) end), fn {a, _b} -> a end ) )/2 - 1 # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+        # max( all cols where col < bb_pos[:col] and cell == 1   )/2
+        Enum.min(
+          Enum.map(
+            Enum.filter(board[bb_pos[:row]], fn {a, b} -> b == 1 && a > bb_pos[:col] end),
+            fn {a, _b} -> a end
+          )
+        ) / 2 - 1
+
       _ ->
         0
     end
   end
 
-  #@doc "Given a robot position and direction, return a list of indices of any robots that the active robot will hit."
+  # @doc "Given a robot position and direction, return a list of indices of any robots that the active robot will hit."
   defp get_robot_blocked_indices(robot_pos, direction, robots) do
     %{x: rx, y: ry} = robot_pos
+
     case direction do
       :up ->
-        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx == rx && yy < ry) end), fn %{pos: %{y: yy}} -> yy+1 end)
+        Enum.map(Enum.filter(robots, fn %{pos: %{x: xx, y: yy}} -> xx == rx && yy < ry end), fn %{
+                                                                                                  pos:
+                                                                                                    %{
+                                                                                                      y:
+                                                                                                        yy
+                                                                                                    }
+                                                                                                } ->
+          yy + 1
+        end)
+
       :down ->
-        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx == rx && yy > ry) end), fn %{pos: %{y: yy}} -> yy-1 end)
+        Enum.map(Enum.filter(robots, fn %{pos: %{x: xx, y: yy}} -> xx == rx && yy > ry end), fn %{
+                                                                                                  pos:
+                                                                                                    %{
+                                                                                                      y:
+                                                                                                        yy
+                                                                                                    }
+                                                                                                } ->
+          yy - 1
+        end)
+
       :left ->
-        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx < rx && yy == ry) end), fn %{pos: %{x: xx}} -> xx+1 end)
+        Enum.map(Enum.filter(robots, fn %{pos: %{x: xx, y: yy}} -> xx < rx && yy == ry end), fn %{
+                                                                                                  pos:
+                                                                                                    %{
+                                                                                                      x:
+                                                                                                        xx
+                                                                                                    }
+                                                                                                } ->
+          xx + 1
+        end)
+
       :right ->
-        Enum.map( Enum.filter( robots, fn %{pos: %{x: xx, y: yy}} -> (xx > rx && yy == ry) end), fn %{pos: %{x: xx}} -> xx-1 end)
+        Enum.map(Enum.filter(robots, fn %{pos: %{x: xx, y: yy}} -> xx > rx && yy == ry end), fn %{
+                                                                                                  pos:
+                                                                                                    %{
+                                                                                                      x:
+                                                                                                        xx
+                                                                                                    }
+                                                                                                } ->
+          xx - 1
+        end)
+
       _ ->
         []
     end
@@ -344,9 +488,11 @@ defmodule RicochetRobots.Game do
   @doc "Check if `robots` are at the active goal and update the state accordingly."
   def check_solution(robots, goals) do
     active_goal = Enum.find(goals, fn %{active: a} -> a end)
-    Enum.any?(robots, fn %{color: c, pos: p} -> ( c == getColorBySymbol(active_goal.symbol) && p == active_goal.pos ) end)
-  end
 
+    Enum.any?(robots, fn %{color: c, pos: p} ->
+      c == getColorBySymbol(active_goal.symbol) && p == active_goal.pos
+    end)
+  end
 
   @doc """
   TODO: docs
@@ -357,13 +503,12 @@ defmodule RicochetRobots.Game do
     return_robots
   end
 
-
   @impl true
   def handle_cast({:new_game}, state) do
     {visual_board, boundary_board, goals} = populate_board()
     robots = populate_robots()
 
-    #TODO: decrement games before new shuffle.
+    # TODO: decrement games before new shuffle.
 
     {:noreply,
      %{
@@ -381,22 +526,21 @@ defmodule RicochetRobots.Game do
      }}
   end
 
-
   @doc "Determine the current clock mode, and send out a signal for clients to sync"
   @impl true
   def handle_cast({:broadcast_clock}, state) do
-
-    response = if (state.solution_found) do
+    response =
+      if state.solution_found do
         Poison.encode!(%{
-          content: %{ timer: state.current_timer, countdown: state.current_countdown},
+          content: %{timer: state.current_timer, countdown: state.current_countdown},
           action: "switch_to_countdown"
         })
-    else
+      else
         Poison.encode!(%{
           content: %{timer: state.current_timer, countdown: state.setting_countdown},
           action: "switch_to_timer"
         })
-    end
+      end
 
     Registry.RicochetRobots
     |> Registry.dispatch(state.registry_key, fn entries ->
@@ -408,16 +552,14 @@ defmodule RicochetRobots.Game do
     {:noreply, state}
   end
 
-
   @doc "Determine the current clock mode, and send out a signal for clients to sync"
   @impl true
   def handle_cast({:clear_moves}, state) do
-
     response =
-        Poison.encode!(%{
-          content: "",
-          action: "clear_moves_queue"
-        })
+      Poison.encode!(%{
+        content: "",
+        action: "clear_moves_queue"
+      })
 
     Registry.RicochetRobots
     |> Registry.dispatch(state.registry_key, fn entries ->
@@ -433,13 +575,21 @@ defmodule RicochetRobots.Game do
   @impl true
   def handle_cast({:award_points}, state) do
     winner = Room.get_user(state.solution_uid)
-    if (state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves) do
-      Room.system_chat(state.registry_key, "#{winner.username} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")
-      return_user = %{winner | score: winner.score + 1 }
+
+    if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
+      Room.system_chat(
+        state.registry_key,
+        "#{winner.username} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution."
+      )
+
+      return_user = %{winner | score: winner.score + 1}
       Room.update_user(return_user)
       Room.broadcast_scoreboard(state.registry_key)
     else
-      Room.system_chat(state.registry_key, "#{winner.username} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points.")
+      Room.system_chat(
+        state.registry_key,
+        "#{winner.username} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points."
+      )
     end
 
     {:noreply, state}
@@ -486,7 +636,6 @@ defmodule RicochetRobots.Game do
 
     {:noreply, state}
   end
-
 
   @doc "Tick 1 second"
   @impl GenServer

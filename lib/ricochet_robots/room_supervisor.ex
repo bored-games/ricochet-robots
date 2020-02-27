@@ -5,7 +5,7 @@ defmodule RicochetRobots.RoomSupervisor do
   require Logger
 
   def start_link(init_arg) do
-    Logger.debug("started roomsupervisor link")
+    Logger.debug("Started RoomSupervisor link")
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
   end
 

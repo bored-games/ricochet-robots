@@ -3,15 +3,13 @@ defmodule RicochetRobots.Player do
   A `Player` is a user, including any relevant settings or information.
   """
 
-  defstruct [
-    username: nil,
-    color: "#c6c6c6",
-    score: 0,
-    is_admin: false,
-    is_muted: false,
-    joined: nil,
-    unique_key: 0
-  ]
+  defstruct username: nil,
+            color: "#c6c6c6",
+            score: 0,
+            is_admin: false,
+            is_muted: false,
+            joined: nil,
+            unique_key: 0
 
   @typedoc """
   A player.
@@ -20,14 +18,14 @@ defmodule RicochetRobots.Player do
   * `color`: An RGB color hexidecimal string such as `#aabbcc`.
   """
   @type t :: %__MODULE__{
-    username: nil | String.t,
-    color: nil | String.t,
-    score: integer,
-    is_admin: boolean,
-    is_muted: boolean,
-    joined: nil | DateTime.t,
-    unique_key: integer
-  }
+          username: nil | String.t(),
+          color: nil | String.t(),
+          score: integer,
+          is_admin: boolean,
+          is_muted: boolean,
+          joined: nil | DateTime.t(),
+          unique_key: integer
+        }
 
   # TODO: take list of previous names and verify unique?
   @doc "Return a new user with unique, randomized name"
@@ -84,7 +82,7 @@ defmodule RicochetRobots.Player do
       "EVE",
       "-3PO",
       "bot",
-      "",
+      ""
     ]
 
     arr3 = [

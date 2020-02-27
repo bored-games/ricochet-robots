@@ -2,7 +2,8 @@ defmodule RicochetRobots.Room do
   @moduledoc """
   Defines a `Room`.
 
-  A `Room` contains information about current users and can have up to one `game`, e.g. `RicochetRobots.Game`, attached.
+  A `Room` contains information about current users and can have up to one
+  `game`, e.g. `RicochetRobots.Game`, attached.
   """
 
   use GenServer
@@ -81,7 +82,8 @@ defmodule RicochetRobots.Room do
   Send a system chat message to all users.
 
   * `message`: the content of the message.
-  * `special_message = {pid, content}`: if non-empty, a separate message will be sent to a special user (typically the calling user).
+  * `special_message = {pid, content}`: if non-empty, a separate message will
+      be sent to a special user (typically the calling user).
 
   ## Example
 
@@ -94,7 +96,8 @@ defmodule RicochetRobots.Room do
 
   @impl true
   def handle_cast({:create_game}, state) do
-    game = RicochetRobots.GameSupervisor.start_link("/ws/robots123") # TODO: THIS SHOULD NOT BE HARDCODED
+    # TODO: THIS SHOULD NOT BE HARDCODED
+    game = RicochetRobots.GameSupervisor.start_link("/ws/robots123")
     {:noreply, Map.put(state, :game, game)}
   end
 
@@ -193,13 +196,9 @@ defmodule RicochetRobots.Room do
     {:noreply, state}
   end
 
-
-
   @impl true
   def handle_call({:get_user, key}, _from, state) do
     user = Enum.find(state.users, fn u -> u.unique_key == key end)
     {:reply, user, state}
   end
-
-
 end
