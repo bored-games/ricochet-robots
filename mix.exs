@@ -32,6 +32,7 @@ defmodule RicochetRobots.MixProject do
   defp deps do
     [
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
+      {:credo, "~> 1.2", only: [:dev, :test], runtime: false},
       {:cowboy, "~> 2.4"},
       {:plug, "~> 1.7"},
       {:plug_cowboy, "~> 2.0"},

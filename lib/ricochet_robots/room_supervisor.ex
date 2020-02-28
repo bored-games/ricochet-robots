@@ -4,21 +4,20 @@ defmodule RicochetRobots.RoomSupervisor do
   use Supervisor
   require Logger
 
-  def start_link(init_arg) do
-    Logger.debug("Started RoomSupervisor link")
-    Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+  def start_link(opts) do
+    Logger.debug("Starting RoomSupervisor link for room \"#{opts[:room_name]}\"")
+    Supervisor.start_link(__MODULE__, opts[:room_name])
   end
 
   @impl true
-  def init(name) do
+  def init(opts) do
     children = [
       %{
         id: RicochetRobots.Room,
-        start: {RicochetRobots.Room, :start_link, name}
-        #     restart: :temporary # DO NOT revive dead rooms, for now.
+        start: {RicochetRobots.Room, :start_link, opts}
       }
     ]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children, strategy: :temporary)
   end
 end

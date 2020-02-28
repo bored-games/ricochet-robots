@@ -1,6 +1,6 @@
 # ricochet-robots
 
-A multiplayer web-based implementation of ricochet-robots.
+A multiplayer web-based implementation of Ricochet Robots.
 
 ## License
 

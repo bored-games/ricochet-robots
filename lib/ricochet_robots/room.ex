@@ -2,133 +2,136 @@ defmodule RicochetRobots.Room do
   @moduledoc """
   Defines a `Room`.
 
-  A `Room` contains information about current users and can have up to one
-  `game`, e.g. `RicochetRobots.Game`, attached.
+  A `Room` is a GenServer that contains information about current players and can
+  have up to one `game` (`RicochetRobots.Game`) attached.
   """
 
   use GenServer
+
   require Logger
+
+  alias RicochetRobots.Player, as: Player
+
+  @default_player_limit 8
 
   defstruct name: nil,
             game: nil,
-            users: [],
+            player_limit: @default_player_limit,
+            players: %{},
             chat: []
 
-  @doc false
-  def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %{room_name: "Pizza Party"}, name: __MODULE__)
+  @type t :: %{
+          name: String.t(),
+          game: Game.t(),
+          player_limit: integer,
+          players: %{
+            player_id: integer,
+            score: integer,
+            is_admin: boolean,
+            is_muted: boolean
+          },
+          chat: [String.t()]
+        }
+
+  @doc """
+  Create a new room and return it's name.
+  """
+  def new() do
+    room_name = generate_name()
+
+    Logger.debug("Attempting to create room with name \"#{room_name}\".")
+    RoomSupervisor.start_link(%{opts | room_name: room_name})
+    system_chat(room_name, "Welcome to #{room_name}!")
+
+    room_name
+  end
+
+  def start_link(%{room_name: room_name} = opts) do
+    GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
   end
 
   @impl true
-  def init(opts) do
-    Logger.debug("[Room: Started Room]")
-    new_room = %__MODULE__{name: opts.room_name}
-    {:ok, new_room}
+  @spec init(%{room_name: String.t()})
+  def init(%{room_name: room_name} = opts) do
+    Logger.info("Opened new room.")
+
+    state = %__MODULE__{
+      name: room_name,
+      player_limit: Map.get(opts, :player_limit, @default_player_limit)
+    }
+
+    {:ok, state}
   end
+
+  @spec create_game(String.t())
+  def create_game(room_name),
+    do: GenServer.call(via_tuple(room_name), {:create_game})
+
+  @spec add_player(String.t(), integer)
+  def add_player(room_name, player_id),
+    do: GenServer.call(via_tuple(room_name), {:add_player, player_id})
+
+  @spec remove_player(String.t(), integer)
+  def remove_player(room_name, player_id),
+    do: GenServer.call(via_tuple(room_name), {:remove_player, player_id})
+
+  @spec broadcast_scoreboard(String.t())
+  def broadcast_scoreboard(room_name),
+    do: GenServer.cast(via_tuple(room_name), {:broadcast_scoreboard, room_name})
+
+  @spec player_chat(String.t(), integer, String.t())
+  def player_chat(room_name, player, message),
+    do: GenServer.cast(via_tuple(room_name), {:player_chat, room_name, player, message})
+
+  @spec system_chat(String.t(), String.t())
+  def system_chat(room_name, message),
+    do: GenServer.cast(via_tuple(room_name), {:system_chat, room_name, message})
+
+  @spec system_chat_to_player(String.t(), integer, String.t())
+  def system_chat_to_player(room_name, player, message),
+    do: GenServer.cast(via_tuple(room_name), {:system_chat_to_player, room_name, player, message})
 
   @doc """
-  Start a `GameSupervisor`, e.g. `RicochetRobots.GameSupervisor` which will handle running a game.
+  Start a new game in a room. If a game is in-progress, do not start a new game and instead
+  return a failure message.
   """
-  def create_game() do
-    GenServer.cast(__MODULE__, {:create_game})
-    Logger.debug("[Room: Created Game]")
-  end
-
-  @doc """
-  Add a user to the room.
-  """
-  def add_user(user) do
-    GenServer.cast(__MODULE__, {:add_user, user})
-  end
-
-  @doc """
-  Update (replace) a user.
-
-  `user`: the modified user to update based on its unique key.
-  """
-  def update_user(user) do
-    GenServer.cast(__MODULE__, {:update_user, user})
-  end
-
-  @doc """
-  Find and return a user by their unique `key`.
-  """
-  def get_user(key) do
-    GenServer.call(__MODULE__, {:get_user, key})
-  end
-
-  @doc """
-  Remove a user by their unique `key`.
-  """
-  def remove_user(key) do
-    GenServer.cast(__MODULE__, {:remove_user, key})
-  end
-
-  @doc """
-  Send out a list of all users, to all users.
-  """
-  def broadcast_scoreboard(registry_key) do
-    GenServer.cast(__MODULE__, {:broadcast_scoreboard, registry_key})
-  end
-
-  @doc """
-  Send a chat message from `user` to all users.
-  """
-  def user_chat(registry_key, user, message) do
-    GenServer.cast(__MODULE__, {:user_chat, registry_key, user, message})
-  end
-
-  @doc """
-  Send a system chat message to all users.
-
-  * `message`: the content of the message.
-  * `special_message = {pid, content}`: if non-empty, a separate message will
-      be sent to a special user (typically the calling user).
-
-  ## Example
-
-      system_chat(state.registry_key, "Say hello to the new user", {self(), "Welcome to the game"})
-
-  """
-  def system_chat(registry_key, message, special_message \\ {0, ""}) do
-    GenServer.cast(__MODULE__, {:system_chat, registry_key, message, special_message})
-  end
-
   @impl true
-  def handle_cast({:create_game}, state) do
-    # TODO: THIS SHOULD NOT BE HARDCODED
-    game = RicochetRobots.GameSupervisor.start_link("/ws/robots123")
+  def handle_call({:create_game}, state) do
+    game = RicochetRobots.GameSupervisor.start_link(room_name: state.name)
+    Logger.info("New game started.")
     {:noreply, Map.put(state, :game, game)}
   end
 
   @impl true
-  def handle_cast({:add_user, user}, state) do
-    {:noreply, %{state | users: [user | state.users]}}
+  def handle_call({:add_player, player_name}, state) do
+    # If we are at player limit, error out.
+    if map_size(state.players) == state.player_limit do
+      Logger.debug("Room at player limit, rejecting player \"#{player_name}\".")
+      {:reply, :error, state}
+    else
+      # Make sure player really exists.
+      case Player.get_player(player_name) do
+        {:ok, player} ->
+          Logger.info("Player \"#{player.name}\" joined.")
+          system_chat(room_name, "#{player.name} joined the room.")
+          {:reply, :ok, %{state | players: MapSet.put(state.players, player.name)}}
+
+        :error ->
+          Logger.debug("Player \"#{player_name}\" does not exist, did not add to room.")
+          {:reply, :error, state}
+      end
+    end
   end
 
   @impl true
-  def handle_cast({:update_user, updated_user}, state) do
-    users =
-      Enum.map(state.users, fn u ->
-        if u.unique_key == updated_user.unique_key do
-          updated_user
-        else
-          u
-        end
-      end)
-
-    {:noreply, %{state | users: users}}
-  end
-
-  @impl true
-  def handle_cast({:remove_user, key}, state) do
-    users = Enum.filter(state.users, fn u -> u.unique_key != key end)
-    {:noreply, %{state | users: users}}
+  def handle_call({:remove_player, key}, state) do
+    players = Enum.filter(state.players, fn u -> u.unique_key != key end)
+    {:noreply, %{state | players: players}}
   end
 
   @impl true
   def handle_cast({:broadcast_scoreboard, registry_key}, state) do
-    response = Poison.encode!(%{content: state.users, action: "update_scoreboard"})
+    response = Poison.encode!(%{content: state.players, action: "update_scoreboard"})
 
     Registry.RicochetRobots
     |> Registry.dispatch(registry_key, fn entries ->
@@ -141,9 +144,9 @@ defmodule RicochetRobots.Room do
   end
 
   @impl true
-  def handle_cast({:user_chat, registry_key, user, message}, state) do
+  def handle_cast({:player_chat, registry_key, player, message}, state) do
     response =
-      Poison.encode!(%{content: %{user: user, msg: message, kind: 0}, action: "update_chat"})
+      Poison.encode!(%{content: %{player: player, msg: message, kind: 0}, action: "update_chat"})
 
     # send chat message to all
     Registry.RicochetRobots
@@ -153,15 +156,13 @@ defmodule RicochetRobots.Room do
       end
     end)
 
-    # TODO: log chat?
-    # state = %{state | chat: ["<#{user}> #{message}" | state.chat]}
     {:noreply, state}
   end
 
   @impl true
   def handle_cast({:system_chat, registry_key, message, {pidmatch, message2}}, state) do
-    system_user = %{
-      username: "System",
+    system_player = %{
+      playername: "System",
       color: "#c6c6c6",
       score: 0,
       is_admin: false,
@@ -170,7 +171,7 @@ defmodule RicochetRobots.Room do
 
     json_msg =
       Poison.encode!(%{
-        content: %{user: system_user, msg: message, kind: 1},
+        content: %{player: system_player, msg: message, kind: 1},
         action: "update_chat"
       })
 
@@ -180,7 +181,7 @@ defmodule RicochetRobots.Room do
         if pid == pidmatch do
           json_msg2 =
             Poison.encode!(%{
-              content: %{user: system_user, msg: message2, kind: 1},
+              content: %{player: system_player, msg: message2, kind: 1},
               action: "update_chat"
             })
 
@@ -196,9 +197,29 @@ defmodule RicochetRobots.Room do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_call({:get_user, key}, _from, state) do
-    user = Enum.find(state.users, fn u -> u.unique_key == key end)
-    {:reply, user, state}
+  defp via_tuple(room_name) do
+    {:via, Registry.RoomRegistry, {__MODULE__, room_name}}
+  end
+
+  @room_name_word_list [
+    "Banana",
+    "Apple",
+    "Orange",
+    "Crackers",
+    "Cheese"
+  ]
+
+  @doc """
+  Generate a random room name from a word list. Compare the room name against
+  existing room names; if there is a conflict, recurse and generate a new name.
+  """
+  @spec generate_name() :: String.t()
+  defp generate_name() do
+    room_name = Enum.random(@room_name_word_list) <> Enum.random(@room_name_word_list)
+
+    case Registry.lookup(Registry.RoomRegistry, room_name) do
+      {:ok, _} -> generate_name()
+      [] -> room_name
+    end
   end
 end

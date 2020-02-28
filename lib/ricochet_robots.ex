@@ -14,10 +14,13 @@ defmodule RicochetRobots do
         ]
       ),
       Registry.child_spec(
-        keys: :duplicate,
-        name: Registry.RicochetRobots
+        keys: :unique,
+        name: Registry.RoomRegistry
       ),
-      RicochetRobots.RoomSupervisor.child_spec(name: RicochetRobots.RoomSupervisor)
+      Registry.child_spec(
+        keys: :unique,
+        name: Registry.PlayerRegistry
+      )
     ]
 
     opts = [strategy: :one_for_one, name: RicochetRobots.Application]
