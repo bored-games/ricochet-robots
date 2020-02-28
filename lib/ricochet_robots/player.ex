@@ -8,53 +8,54 @@ defmodule RicochetRobots.Player do
 
   defstruct name: nil,
             color: "#c6c6c6",
+            socket_pid: nil,
             rooms: MapSet.new()
 
   @type t :: %{
           name: String.t(),
           color: nil | String.t(),
+          socket_pid: pid(),
           rooms: MapSet.t()
         }
 
-  def start_link(%{player_name: player_name} = opts) do
+  def start_link(%{player_name: player_name, socket_pid: socket_pid} = opts) do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
   end
 
   @impl true
-  @spec init(%{player_name: String.t()})
-  def init(%{player_name: player_name} = opts) do
+  @spec init(%{player_name: String.t(), socket_pid: pid()})
+  def init(%{player_name: player_name, socket_pid: socket_pid} = opts) do
     Logger.info("Started new player.")
 
     state = %__MODULE__{
       name: player_name,
-      color: generate_color()
+      color: generate_color(),
+      socket_pid: socket_pid
     }
 
     {:ok, state}
   end
 
   @spec new() :: String.t()
-  def new() do
+  def new(socket_pid) do
     player_name = Player.generate_nickname()
 
     Logger.debug("Attempting to create player with name \"#{player_name}\".")
-    PlayerSupervisor.start_link(%{player_name: player_name})
+    PlayerSupervisor.start_link(%{player_name: player_name, socket_pid: socket_pid})
 
     player_name
   end
 
-  @spec get_player(String.t()) :: {:ok, Player.t()} | :error
-  def get_player(player_name) do
-    case Registry.lookup(Registry.PlayerRegistry, player_name) do
-      [{pid, _}] ->
-        case GenServer.call(pid, {:get_player}) do
-          {:ok, player} -> {:ok, player}
-          _ -> :error
-        end
-
-      [] ->
-        :error
+  @spec fetch(String.t()) :: {:ok, Player.t()} | :error
+  def fetch(player_name) do
+    case GenServer.call(via_tuple(player_name), :get_state) do
+      {:ok, player} -> {:ok, player}
+      _ -> :error
     end
+  end
+
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
   end
 
   defp via_tuple(player_name) do

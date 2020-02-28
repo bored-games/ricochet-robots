@@ -1,3 +1,37 @@
+defmodule ChatList do
+  @moduledoc """
+  A wrapper around a list that enforces a maximum list length. After the
+  maximum length is reached, new additions to the list will push the
+  old elements into the void.
+  """
+
+  # TODO: Add more functions that we need:
+  # - Get chat history
+  # - End game
+
+  @max_length 1000
+
+  defstruct list: [],
+            length: 0
+
+  @type t :: %{
+          list: [],
+          length: integer
+        }
+
+  def new(), do: %__MODULE__{}
+
+  def prepend(chat_list, element) do
+    list = [element | chat_list.list]
+
+    if chat_list.length == @max_length do
+      %__MODULE__{list: Enum.slice(list, 0, @max_length), length: @max_length}
+    else
+      %__MODULE__{list: list, length: chat_list.length + 1}
+    end
+  end
+end
+
 defmodule RicochetRobots.Room do
   @moduledoc """
   Defines a `Room`.
@@ -7,7 +41,6 @@ defmodule RicochetRobots.Room do
   """
 
   use GenServer
-
   require Logger
 
   alias RicochetRobots.Player, as: Player
@@ -18,7 +51,7 @@ defmodule RicochetRobots.Room do
             game: nil,
             player_limit: @default_player_limit,
             players: %{},
-            chat: []
+            chat: ChatList.new()
 
   @type t :: %{
           name: String.t(),
@@ -31,7 +64,7 @@ defmodule RicochetRobots.Room do
               is_muted: boolean
             }
           },
-          chat: [String.t()]
+          chat: ChatList.t()
         }
 
   def start_link(%{room_name: room_name} = opts) do
@@ -54,7 +87,7 @@ defmodule RicochetRobots.Room do
   @doc """
   Create a new room and return it's name.
   """
-  def new() do
+  def new(opts) do
     room_name = generate_name()
 
     Logger.debug("Attempting to create room with name \"#{room_name}\".")
@@ -64,42 +97,61 @@ defmodule RicochetRobots.Room do
     room_name
   end
 
+  def close(room_name) do
+    Logger.info("Attempting to close room.")
+
+    Logger.debug("Preparing for room close: kicking users from room.")
+
+    Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
+      for {player_name, _socket} <- entries, do: remove_player(room_name, player_name)
+    end)
+
+    Logger.debug("Stopping GenServer, bye bye!")
+    GenServer.stop(via_tuple(room_name), :normal)
+  end
+
   @spec create_game(String.t())
-  def create_game(room_name),
-    do: GenServer.call(via_tuple(room_name), {:create_game})
+  def create_game(room_name) do
+    GenServer.call(via_tuple(room_name), :create_game)
+  end
 
   @spec add_player(String.t(), integer) :: :ok | :error
-  def add_player(room_name, player_id),
-    do: GenServer.call(via_tuple(room_name), {:add_player, player_id})
+  def add_player(room_name, player_name) do
+    GenServer.call(via_tuple(room_name), {:add_player, player_name})
+  end
 
   @spec remove_player(String.t(), integer)
-  def remove_player(room_name, player_id),
-    do: GenServer.call(via_tuple(room_name), {:remove_player, player_id})
-
-  @spec broadcast_scoreboard(String.t())
-  def broadcast_scoreboard(room_name),
-    do: GenServer.cast(via_tuple(room_name), {:broadcast_scoreboard, room_name})
+  def remove_player(room_name, player_name) do
+    GenServer.call(via_tuple(room_name), {:remove_player, player_name})
+  end
 
   @spec player_chat(String.t(), integer, String.t())
-  def player_chat(room_name, player, message),
-    do: GenServer.cast(via_tuple(room_name), {:player_chat, room_name, player, message})
+  def player_chat(room_name, player_name, message) do
+    GenServer.cast(via_tuple(room_name), {:player_chat, player_name, message})
+  end
 
   @spec system_chat(String.t(), String.t())
-  def system_chat(room_name, message),
-    do: GenServer.cast(via_tuple(room_name), {:system_chat, room_name, message})
+  def system_chat(room_name, message) do
+    GenServer.cast(via_tuple(room_name), {:system_chat, message})
+  end
 
   @spec system_chat_to_player(String.t(), integer, String.t())
-  def system_chat_to_player(room_name, player, message),
-    do: GenServer.cast(via_tuple(room_name), {:system_chat_to_player, room_name, player, message})
+  def system_chat_to_player(room_name, player, message) do
+    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player, message})
+  end
+
+  @spec broadcast_scoreboard(String.t())
+  def broadcast_scoreboard(room_name) do
+    GenServer.cast(via_tuple(room_name), :broadcast_scoreboard)
+  end
 
   @doc """
   Start a new game in a room. If a game is in-progress, do not start a new game
   and instead return a failure message.
   """
   @impl true
-  def handle_call({:create_game}, state) do
+  def handle_call(:create_game, state) do
     game = RicochetRobots.GameSupervisor.start_link(room_name: state.name)
-    Logger.info("New game started.")
     {:noreply, Map.put(state, :game, game)}
   end
 
@@ -109,15 +161,17 @@ defmodule RicochetRobots.Room do
   """
   @impl true
   def handle_call({:add_player, player_name}, state) do
-    # If we are at player limit, error out.
     if map_size(state.players) == state.player_limit do
       Logger.debug("Room at player limit, rejecting player \"#{player_name}\".")
       {:reply, :error, state}
     else
       # Make sure player really exists.
-      case Player.get_player(player_name) do
+      case Player.fetch(player_name) do
         {:ok, player} ->
+          Registry.register(Registry.RoomPlayerRegistry, player_name, player.socket)
+
           Logger.info("Player \"#{player.name}\" joined.")
+
           system_chat(room_name, "#{player.name} joined the room.")
           {:reply, :ok, %{state | players: MapSet.put(state.players, player.name)}}
 
@@ -129,91 +183,90 @@ defmodule RicochetRobots.Room do
   end
 
   @doc """
-  Remove a player from a room. Error if the player is not in the room.
+  Remove a player from a room. Error if the player is not in the room. If the
+  player being removed is the last player in the room, close the room.
   """
   @impl true
   def handle_call({:remove_player, player_name}, state) do
     if Map.member?(state.players, player_name) do
       Logger.debug("Removing \"#{player_name}\" from room \"#{state.name}\".")
-      {:reply, :ok, %{state | Map.delete(state.players, player_name)}}
+
+      Registry.unregister(Registry.RoomPlayerRegistry, state.name, player_name)
+      state = %{state | Map.delete(state.players, player_name)}
+
+      if map_size(state.players) == 0 do
+        Logger.info("Last player has left room. Closing.")
+        Room.close(state.name)
+      end
+
+      {:reply, :ok, state}
     else
       Logger.debug("\"#{player_name}\" not in \"#{state.name}\", did not remove from room.")
       {:reply, :error, state}
     end
   end
 
-  # TODO: Last.
   @impl true
-  def handle_cast({:broadcast_scoreboard, registry_key}, state) do
-    response = Poison.encode!(%{content: state.players, action: "update_scoreboard"})
+  def handle_cast({:player_chat, player_name, chat_message}, state) do
+    case Player.fetch(player_name) do
+      {:ok, player} ->
+        message =
+          Poison.encode!(%{
+            action: "player_chat_new_message",
+            content: %{
+              player_name: player_name,
+              message: chat_message,
+              timestamp: :calendar.universal_time()
+            }
+          })
 
-    Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
-      for {pid, _} <- entries do
-        Process.send(pid, response, [])
-      end
-    end)
+        Registry.dispatch(Registry.RoomPlayerRegistry, state.name, fn entries ->
+          for {_, socket} <- entries, do: Process.send(socket, message, [])
+        end)
 
+      :error ->
+        nil
+    end
+
+    state = %{state | chat: ChatList.prepend(state.chat, message)}
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast({:player_chat, registry_key, player, message}, state) do
-    response =
-      Poison.encode!(%{content: %{player: player, msg: message, kind: 0}, action: "update_chat"})
-
-    # send chat message to all
-    Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
-      for {pid, _} <- entries do
-        Process.send(pid, response, [])
-      end
-    end)
-
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast({:system_chat, registry_key, message, {pidmatch, message2}}, state) do
-    system_player = %{
-      playername: "System",
-      color: "#c6c6c6",
-      score: 0,
-      is_admin: false,
-      is_muted: false
-    }
-
-    json_msg =
+  def handle_cast({:system_chat, chat_message}, state) do
+    message =
       Poison.encode!(%{
-        content: %{player: system_player, msg: message, kind: 1},
-        action: "update_chat"
+        action: "system_chat_new_message",
+        content: %{
+          message: chat_message,
+          timestamp: :calendar.universal_time()
+        }
       })
 
-    Registry.RicochetRobots
-    |> Registry.dispatch(registry_key, fn entries ->
-      for {pid, _} <- entries do
-        if pid == pidmatch do
-          json_msg2 =
-            Poison.encode!(%{
-              content: %{player: system_player, msg: message2, kind: 1},
-              action: "update_chat"
-            })
-
-          Process.send(pid, json_msg2, [])
-        else
-          Process.send(pid, json_msg, [])
-        end
-      end
+    Registry.dispatch(Registry.RoomPlayerRegistry, state.name, fn entries ->
+      for {_, socket} <- entries, do: Process.send(socket, message, [])
     end)
 
-    # store chat in state?
-    state = %{state | chat: [message | state.chat]}
+    state = %{state | chat: ChatList.prepend(state.chat, message)}
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:broadcast_scoreboard, state) do
+    message = Poison.encode!(%{content: state.players, action: "update_scoreboard"})
+
+    Registry.dispatch(Registry.RoomPlayerRegistry, state.name, fn entries ->
+      for {_, socket} <- entries, do: Process.send(pid, response, [])
+    end)
+
     {:noreply, state}
   end
 
   defp via_tuple(room_name) do
     {:via, Registry.RoomRegistry, {__MODULE__, room_name}}
   end
+
+  # TODO: Add more words.
 
   @room_name_word_list [
     "Banana",

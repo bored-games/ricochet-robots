@@ -27,7 +27,7 @@ defmodule RicochetRobots.SocketHandler do
 
   @impl true
   def init(request, _state) do
-    state = %__MODULE__{player_name: Player.new()}
+    state = %__MODULE__{player_name: Player.new(self())}
 
     Logger.info("New websocket connection initiated by \"#{state.player_name}\".")
     {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
@@ -82,9 +82,8 @@ defmodule RicochetRobots.SocketHandler do
   """
   @impl true
   def websocket_handle({:json, "create_room", opts}, state) do
-    room_name = Room.new()
-
-    state = %Player{state | is_admin: true, rooms: MapSet.put(state.rooms, room_name)}
+    room_name = Room.new(opts)
+    Room.add_player(room_name, state.player_name, admin: true)
     {:reply, {:text, "success"}, state}
   end
 
@@ -207,7 +206,9 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, response}, state}
   end
 
-  @doc "Handle all other messages on their way out to clients."
+  @doc """
+  Forward Elixir messages to client.
+  """
   @impl true
   def websocket_info(info, state) do
     {:reply, {:text, info}, state}
