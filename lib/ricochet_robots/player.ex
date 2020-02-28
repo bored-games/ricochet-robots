@@ -16,15 +16,6 @@ defmodule RicochetRobots.Player do
           rooms: MapSet.t()
         }
 
-  def new() do
-    player_name = Player.generate_nickname()
-
-    Logger.debug("Attempting to create player with name \"#{player_name}\".")
-    PlayerSupervisor.start_link(%{player_name: player_name})
-
-    player_name
-  end
-
   def start_link(%{player_name: player_name} = opts) do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
   end
@@ -40,6 +31,34 @@ defmodule RicochetRobots.Player do
     }
 
     {:ok, state}
+  end
+
+  @spec new() :: String.t()
+  def new() do
+    player_name = Player.generate_nickname()
+
+    Logger.debug("Attempting to create player with name \"#{player_name}\".")
+    PlayerSupervisor.start_link(%{player_name: player_name})
+
+    player_name
+  end
+
+  @spec get_player(String.t()) :: {:ok, Player.t()} | :error
+  def get_player(player_name) do
+    case Registry.lookup(Registry.PlayerRegistry, player_name) do
+      [{pid, _}] ->
+        case GenServer.call(pid, {:get_player}) do
+          {:ok, player} -> {:ok, player}
+          _ -> :error
+        end
+
+      [] ->
+        :error
+    end
+  end
+
+  defp via_tuple(player_name) do
+    {:via, Registry.PlayerRegistry, {__MODULE__, player_name}}
   end
 
   @nickname_word_list_1 [

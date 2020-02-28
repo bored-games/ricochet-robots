@@ -25,26 +25,14 @@ defmodule RicochetRobots.Room do
           game: Game.t(),
           player_limit: integer,
           players: %{
-            player_id: integer,
-            score: integer,
-            is_admin: boolean,
-            is_muted: boolean
+            required(String.t()) => %{
+              score: integer,
+              is_admin: boolean,
+              is_muted: boolean
+            }
           },
           chat: [String.t()]
         }
-
-  @doc """
-  Create a new room and return it's name.
-  """
-  def new() do
-    room_name = generate_name()
-
-    Logger.debug("Attempting to create room with name \"#{room_name}\".")
-    RoomSupervisor.start_link(%{opts | room_name: room_name})
-    system_chat(room_name, "Welcome to #{room_name}!")
-
-    room_name
-  end
 
   def start_link(%{room_name: room_name} = opts) do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
@@ -63,11 +51,24 @@ defmodule RicochetRobots.Room do
     {:ok, state}
   end
 
+  @doc """
+  Create a new room and return it's name.
+  """
+  def new() do
+    room_name = generate_name()
+
+    Logger.debug("Attempting to create room with name \"#{room_name}\".")
+    RoomSupervisor.start_link(%{opts | room_name: room_name})
+    system_chat(room_name, "Welcome to #{room_name}!")
+
+    room_name
+  end
+
   @spec create_game(String.t())
   def create_game(room_name),
     do: GenServer.call(via_tuple(room_name), {:create_game})
 
-  @spec add_player(String.t(), integer)
+  @spec add_player(String.t(), integer) :: :ok | :error
   def add_player(room_name, player_id),
     do: GenServer.call(via_tuple(room_name), {:add_player, player_id})
 
@@ -92,8 +93,8 @@ defmodule RicochetRobots.Room do
     do: GenServer.cast(via_tuple(room_name), {:system_chat_to_player, room_name, player, message})
 
   @doc """
-  Start a new game in a room. If a game is in-progress, do not start a new game and instead
-  return a failure message.
+  Start a new game in a room. If a game is in-progress, do not start a new game
+  and instead return a failure message.
   """
   @impl true
   def handle_call({:create_game}, state) do
@@ -102,6 +103,10 @@ defmodule RicochetRobots.Room do
     {:noreply, Map.put(state, :game, game)}
   end
 
+  @doc """
+  Add a player to a room. Check a few things, such as the player limit and the
+  existence of a player; after verifying them, add the player to the room.
+  """
   @impl true
   def handle_call({:add_player, player_name}, state) do
     # If we are at player limit, error out.
@@ -123,12 +128,21 @@ defmodule RicochetRobots.Room do
     end
   end
 
+  @doc """
+  Remove a player from a room. Error if the player is not in the room.
+  """
   @impl true
-  def handle_call({:remove_player, key}, state) do
-    players = Enum.filter(state.players, fn u -> u.unique_key != key end)
-    {:noreply, %{state | players: players}}
+  def handle_call({:remove_player, player_name}, state) do
+    if Map.member?(state.players, player_name) do
+      Logger.debug("Removing \"#{player_name}\" from room \"#{state.name}\".")
+      {:reply, :ok, %{state | Map.delete(state.players, player_name)}}
+    else
+      Logger.debug("\"#{player_name}\" not in \"#{state.name}\", did not remove from room.")
+      {:reply, :error, state}
+    end
   end
 
+  # TODO: Last.
   @impl true
   def handle_cast({:broadcast_scoreboard, registry_key}, state) do
     response = Poison.encode!(%{content: state.players, action: "update_scoreboard"})
@@ -218,7 +232,7 @@ defmodule RicochetRobots.Room do
     room_name = Enum.random(@room_name_word_list) <> Enum.random(@room_name_word_list)
 
     case Registry.lookup(Registry.RoomRegistry, room_name) do
-      {:ok, _} -> generate_name()
+      [{_, _}] -> generate_name()
       [] -> room_name
     end
   end
