@@ -1,6 +1,13 @@
-# ricochet-robots
+# Ricochet Robots
 
-A multiplayer web-based implementation of Ricochet Robots.
+A multiplayer browser-based implementation of a backend for Ricochet Robots.
+
+This repository is meant to be paired with a frontend. For a frontend, see
+https://github.com/gg314/robots-client.
+
+## Deployment
+
+
 
 ## License
 

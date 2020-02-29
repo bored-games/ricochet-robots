@@ -3,20 +3,16 @@ defmodule RicochetRobots.SocketHandler do
   Controls the way a user interacts with a `Room` (e.g. chat) or a `Game` (e.g.
   making a move).
 
-  The state for a socket handler is a `Player` struct.
+  The state for a socket handler is the unique player name.
   """
 
   require Logger
-
-  alias RicochetRobots.Player, as: Player
-  alias RicochetRobots.Room, as: Room
-  alias RicochetRobots.Game, as: Game
-  alias RicochetRobots.RoomSupervisor, as: RoomSupervisor
+  alias RicochetRobots.{Player, Room, Game}
 
   defstruct player_name: nil
 
   @type t :: %{
-          player_id: integer
+          player_name: String.t()
         }
 
   # TODO: Figure out a nice response format for the Elm frontend to use. Then
@@ -83,7 +79,7 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "create_room", opts}, state) do
     room_name = Room.new(opts)
-    Room.add_player(room_name, state.player_name, admin: true)
+    Room.add_player(room_name, state.player_name)
     {:reply, {:text, "success"}, state}
   end
 
@@ -98,7 +94,7 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "join_room", %{room_name: room_name}}, state) do
     Logger.debug("Attempting to add player \"#{state.player_name}\" to room \"#{room_name}\".")
 
-    case Room.add_player(state.id) do
+    case Room.add_player(room_name, state.player_name) do
       :ok -> {:reply, {:text, "success"}, state}
       :error -> {:reply, {:text, "failure"}, state}
     end
@@ -112,8 +108,8 @@ defmodule RicochetRobots.SocketHandler do
   new board, new robots, and new goals to players.
   """
   @impl true
-  def websocket_handle({:json, "new_game", _content}, state) do
-    case Room.new_game(state.id) do
+  def websocket_handle({:json, "new_game", %{room_name: room_name}}, state) do
+    case Game.new(room_name, state.player_name) do
       :ok -> {:reply, {:text, "success"}, state}
       :error -> {:reply, {:text, "failure"}, state}
     end
@@ -128,8 +124,13 @@ defmodule RicochetRobots.SocketHandler do
     # seperate message for client that just joined
     Room.system_chat(
       state.registry_key,
-      "#{state[:player].username} has joined the game.",
-      {self(), "Welcome to Ricochet Robots, #{state[:player].username}!"}
+      "#{state[:player].username} has joined the game."
+    )
+
+    Room.system_chat_to_player(
+      state.registry_key,
+      state[:player].username,
+      "Welcome to Ricochet Robots, #{state[:player].username}!"
     )
 
     Room.broadcast_scoreboard(state.registry_key)
@@ -147,7 +148,7 @@ defmodule RicochetRobots.SocketHandler do
   @doc "new_chatline: need to send out new chatline to all users"
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
-    Room.user_chat(state.registry_key, state.player, content["msg"])
+    Room.player_chat(state.registry_key, state.player, content["msg"])
 
     {:reply, {:text, "success"}, state}
   end
@@ -178,7 +179,7 @@ defmodule RicochetRobots.SocketHandler do
     new_state = %{state | player: new_user}
 
     # send scoreboard to all
-    Room.update_user(new_user)
+    Player.update(new_user)
     Room.broadcast_scoreboard(state.registry_key)
 
     # send client their new user info
@@ -200,7 +201,7 @@ defmodule RicochetRobots.SocketHandler do
   @doc "_ : handle all other JSON data with `action` as unknown."
   @impl true
   def websocket_handle({:json, action, _}, state) do
-    Logger.debug("Unhandled action from client #{state.id}: " <> action)
+    Logger.debug("Unhandled action from client #{state.player_name}: " <> action)
 
     response = Poison.encode!(%{action: "error", message: "Unsupported action."})
     {:reply, {:text, response}, state}
@@ -214,12 +215,17 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, info}, state}
   end
 
-  @doc "Callback function from terminated socket."
+  # TODO: all
+  @doc """
+  Callback function for a terminated socket. Announce the player's
+  parting, remove them from all their rooms, and broadcast the state change to
+  all clients.
+  """
   @impl true
   def terminate(_reason, _req, state) do
     state.rooms
     Room.system_chat(state.rooms, state.player_name <> " has left.")
-    Room.remove_user(state.player.unique_key)
+    Room.remove_player(state.registry_key, state.player.unique_key)
     Room.broadcast_scoreboard(state.registry_key)
     :ok
   end

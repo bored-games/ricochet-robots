@@ -3,16 +3,20 @@ defmodule RicochetRobots.Player do
   A `Player` is a user, including any relevant settings or information.
 
   `color` is a "#rrggbb" string.
-  `room` is the name of the room they are in.
   """
 
+  require Logger
+  alias RicochetRobots.{RoomSupervisor, PlayerSupervisor}
+
   defstruct name: nil,
+            nickname: nil,
             color: "#c6c6c6",
             socket_pid: nil,
             rooms: MapSet.new()
 
   @type t :: %{
           name: String.t(),
+          nickname: String.t(),
           color: nil | String.t(),
           socket_pid: pid(),
           rooms: MapSet.t()
@@ -23,7 +27,7 @@ defmodule RicochetRobots.Player do
   end
 
   @impl true
-  @spec init(%{player_name: String.t(), socket_pid: pid()})
+  @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
   def init(%{player_name: player_name, socket_pid: socket_pid} = opts) do
     Logger.info("Started new player.")
 
@@ -36,7 +40,7 @@ defmodule RicochetRobots.Player do
     {:ok, state}
   end
 
-  @spec new() :: String.t()
+  @spec new(pid()) :: String.t()
   def new(socket_pid) do
     player_name = Player.generate_nickname()
 
