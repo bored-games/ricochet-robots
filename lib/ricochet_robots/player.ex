@@ -66,6 +66,30 @@ defmodule RicochetRobots.Player do
     {:via, Registry.PlayerRegistry, {__MODULE__, player_name}}
   end
 
+  @doc """
+  Return a new nickname. We generate a nickname by combining 3 words from 3
+  word lists.
+  """
+  @spec generate_name() :: String.t()
+  defp generate_name() do
+    player_name =
+      Enum.random(@nickname_word_list_1) <>
+        Enum.random(@nickname_word_list_2) <> Enum.random(@nickname_word_list_3)
+
+    case Registry.lookup(Registry.PlayerRegistry, player_name) do
+      {:ok, _} -> generate_name()
+      [] -> player_name
+    end
+  end
+
+  @doc """
+  Return a random color from a defined list.
+  """
+  @spec generate_color() :: String.t()
+  defp generate_color() do
+    Enum.random(@colors)
+  end
+
   @nickname_word_list_1 [
     "Robot",
     "Bio",
@@ -129,22 +153,6 @@ defmodule RicochetRobots.Player do
     "2020"
   ]
 
-  @doc """
-  Return a new nickname. We generate a nickname by combining 3 words from 3
-  word lists.
-  """
-  @spec generate_name() :: String.t()
-  defp generate_name() do
-    player_name =
-      Enum.random(@nickname_word_list_1) <>
-        Enum.random(@nickname_word_list_2) <> Enum.random(@nickname_word_list_3)
-
-    case Registry.lookup(Registry.PlayerRegistry, player_name) do
-      {:ok, _} -> generate_name()
-      [] -> player_name
-    end
-  end
-
   @colors [
     "#707070",
     "#e05e5e",
@@ -162,12 +170,4 @@ defmodule RicochetRobots.Player do
     "#b19278",
     "#e0e0e0"
   ]
-
-  @doc """
-  Return a random color from a defined list.
-  """
-  @spec generate_color() :: String.t()
-  defp generate_color() do
-    Enum.random(@colors)
-  end
 end
