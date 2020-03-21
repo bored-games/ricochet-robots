@@ -15,9 +15,6 @@ defmodule RicochetRobots.SocketHandler do
           player_name: String.t()
         }
 
-  # TODO: Figure out a nice response format for the Elm frontend to use. Then
-  # go fix all the responses to contain updates to state.
-
   @behaviour :cowboy_websocket
   @idle_timeout 90_000
 

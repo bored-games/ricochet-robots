@@ -19,6 +19,10 @@ defmodule RicochetRobots do
       ),
       Registry.child_spec(
         keys: :unique,
+        name: Registry.GameRegistry
+      ),
+      Registry.child_spec(
+        keys: :unique,
         name: Registry.PlayerRegistry
       ),
       Registry.child_spec(

@@ -37,7 +37,6 @@ defmodule RicochetRobots.Room do
 
   TODO: Add more functions that we need:
   - Get chat history
-  - End game
   - Mute user
   - Unmute user
 
@@ -51,14 +50,12 @@ defmodule RicochetRobots.Room do
   @default_player_limit 8
 
   defstruct name: nil,
-            game: nil,
             player_limit: @default_player_limit,
             players: %{},
             chat: ChatLog.new()
 
   @type t :: %{
           name: String.t(),
-          game: Game.t(),
           player_limit: integer,
           players: %{
             required(String.t()) => %{
@@ -112,13 +109,14 @@ defmodule RicochetRobots.Room do
     GenServer.stop(via_tuple(room_name), :normal)
   end
 
+  def broadcast_to_players(message, room_name) do
+    Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
+      for {_, socket} <- entries, do: Process.send(socket, message, [])
+    end)
+  end
+
   # Some wrappers for common GenServer calls. If we ever need to take advantage
   # of the `from` parameter in the GenServer callback, bypass these wrappers.
-
-  @spec create_game(String.t()) :: nil
-  def create_game(room_name) do
-    GenServer.call(via_tuple(room_name), :create_game)
-  end
 
   @spec add_player(String.t(), integer) :: :ok | :error
   def add_player(room_name, player_name) do
@@ -148,16 +146,6 @@ defmodule RicochetRobots.Room do
   @spec broadcast_scoreboard(String.t()) :: nil
   def broadcast_scoreboard(room_name) do
     GenServer.cast(via_tuple(room_name), :broadcast_scoreboard)
-  end
-
-  @doc """
-  Start a new game in a room. If a game is in-progress, do not start a new game
-  and instead return a failure message.
-  """
-  @impl true
-  def handle_call(:create_game, _from, state) do
-    game = RicochetRobots.GameSupervisor.start_link(room_name: state.name)
-    {:noreply, Map.put(state, :game, game)}
   end
 
   @doc """
@@ -231,9 +219,7 @@ defmodule RicochetRobots.Room do
             }
           })
 
-        Registry.dispatch(Registry.RoomPlayerRegistry, state.name, fn entries ->
-          for {_, socket} <- entries, do: Process.send(socket, message, [])
-        end)
+        broadcast_to_players(message, state.name)
 
         state = %__MODULE__{state | chat: ChatLog.log(state.chat, message)}
         {:noreply, state}
@@ -259,9 +245,7 @@ defmodule RicochetRobots.Room do
         }
       })
 
-    Registry.dispatch(Registry.RoomPlayerRegistry, state.name, fn entries ->
-      for {_, socket} <- entries, do: Process.send(socket, message, [])
-    end)
+    broadcast_to_players(message, state.name)
 
     state = %__MODULE__{state | chat: ChatLog.log(state.chat, message)}
     {:noreply, state}
@@ -296,11 +280,8 @@ defmodule RicochetRobots.Room do
   """
   @impl true
   def handle_cast(:broadcast_scoreboard, state) do
-    message = Poison.encode!(%{content: state.players, action: "update_scoreboard"})
-
-    Registry.dispatch(Registry.RoomPlayerRegistry, state.name, fn entries ->
-      for {_, socket} <- entries, do: Process.send(socket, message, [])
-    end)
+    Poison.encode!(%{content: state.players, action: "update_scoreboard"})
+    |> broadcast_to_players(state.name)
 
     {:noreply, state}
   end
@@ -308,16 +289,6 @@ defmodule RicochetRobots.Room do
   defp via_tuple(room_name) do
     {:via, Registry.RoomRegistry, {__MODULE__, room_name}}
   end
-
-  # TODO: Add more words.
-
-  @room_name_word_list [
-    "Banana",
-    "Apple",
-    "Orange",
-    "Crackers",
-    "Cheese"
-  ]
 
   @spec generate_name() :: String.t()
   defp generate_name() do
@@ -330,4 +301,14 @@ defmodule RicochetRobots.Room do
       [] -> room_name
     end
   end
+
+  # TODO: Add more words.
+
+  @room_name_word_list [
+    "Banana",
+    "Apple",
+    "Orange",
+    "Crackers",
+    "Cheese"
+  ]
 end
