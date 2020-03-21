@@ -103,12 +103,17 @@ defmodule RicochetRobots.SocketHandler do
   Start a new game. Check to see if a game is currently in progress; if one
   is, then do not do anything. If no game is currently in progress, send out a
   new board, new robots, and new goals to players.
+  # TODO: Enforce who can start a new game? Or log who started the game?
   """
   @impl true
   def websocket_handle({:json, "new_game", %{room_name: room_name}}, state) do
-    case Game.new(room_name, state.player_name) do
-      :ok -> {:reply, {:text, "success"}, state}
-      :error -> {:reply, {:text, "failure"}, state}
+    case Game.new(room_name) do
+      :ok ->
+        Room.system_chat(room_name, "#{state.player.username} has started a new game!")
+        {:reply, {:text, "success"}, state}
+
+      :error ->
+        {:reply, {:text, "failure"}, state}
     end
   end
 
@@ -116,13 +121,10 @@ defmodule RicochetRobots.SocketHandler do
   @doc "new_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
   @impl true
   def websocket_handle({:json, "create_user", _content}, state) do
-    Logger.debug("[New user]: " <> state[:player].username)
+    Logger.debug("[New user]: " <> state.player.username)
 
     # seperate message for client that just joined
-    Room.system_chat(
-      state.registry_key,
-      "#{state[:player].username} has joined the game."
-    )
+    Room.system_chat(state.registry_key, "#{state.player.username} has joined the game.")
 
     Room.system_chat_to_player(
       state.registry_key,

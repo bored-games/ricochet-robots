@@ -5,6 +5,8 @@ defmodule GameLogic do
 
   import Bitwise
 
+  alias RicochetRobots.{Game}
+
   @doc """
   Return whether the robot that matches the goal color is at the active goal.
   """
@@ -56,10 +58,11 @@ defmodule GameLogic do
 
   # Given a specific robot, a list of robots and a boundary_board, find the set
   # of legal moves for each robot.
+  #
+  # Note: Our walls are in a 33x33 array, while our robots are in a 16x16
+  # array. We thus have to multiply by 2 to get the index of the walls.
   defp calculate_moves(robot, robots, board) do
     %{x: robot_x, y: robot_y} = robot.pos
-    # Our walls are in a 33x33 array, while our robots are in a 16x16 array.
-    # We thus have to multiply by 2.
     %{x: board_x, y: board_y} = %{y: 2 * robot_y + 1, x: round(2 * robot_x + 1)}
     robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
 
@@ -78,7 +81,8 @@ defmodule GameLogic do
     %{robot | moves: moves}
   end
 
-  # @doc "Given a robot position and direction, return the relevant index of the first wall the robot will hit."
+  # Given a robot position and direction, return the relevant index of the
+  # first wall the robot will hit.
   defp get_wall_blocked_indices(vb_pos, direction, board) do
     bb_pos = %{row: round(2 * vb_pos[:y] + 1), col: round(2 * vb_pos[:x] + 1)}
 
@@ -166,17 +170,17 @@ defmodule GameLogic do
     [robot | robots]
   end
 
-  @open_squares 0..15 |> Enum.to_list() |> List.delete(7) |> List.delete(8)
+  @open_indices Enum.to_list(0..15) -- [7, 8]
 
-  # Given a list of {int, int} pairs not to repeat, and two arrays to choose new
-  # tuples from, return a list with a new unique tuple.
+  # Given a list of occupied positions, choose a new position.
   @spec rand_position([Game.position_t()]) :: [Game.position_t()]
   defp rand_position(robots) do
-    rand_pair = %{x: Enum.random(@open_squares), y: Enum.random(@open_squares)}
+    occupied = for(robot <- robots, do: robot.pos) |> Enum.to_list()
 
-    if rand_pair in robots,
-      do: rand_position(robots),
-      else: rand_pair
+    for(x <- @open_indices, y <- @open_indices, do: %{x: x, y: y})
+    |> Enum.to_list()
+    |> (&(&1 -- occupied)).()
+    |> Enum.random()
   end
 
   @doc "Return a randomized boundary board, its visual map, and corresponding goal positions."
@@ -191,8 +195,7 @@ defmodule GameLogic do
 
     a =
       for i <- [14, 18], j <- 14..18 do
-        put_in(a[i][j], 1)
-        put_in(a[j][i], 1)
+        put_in(a[i][j], 1) |> put_in(a[j][i], 1)
       end
 
     # two | per board edge, with certain spaces avoided
@@ -490,7 +493,8 @@ defmodule GameLogic do
 
   # TOP = 1    RIG = 2    BOT = 4    LEF = 8
   # TRT = 16   BRT = 32   BLT = 64   TLT = 128
-  # Find the bordering cells of b[row][col] in the boundary_board (a) and stuff in the correct integer representation for frontend presentation
+  # Find the bordering cells of b[row][col] in the boundary_board (a) and stuff
+  # in the correct integer representation for frontend presentation
   defp populate_cols(a, b, row, col) when col <= 0 do
     cc = 2 * col + 1
     rr = 2 * row + 1

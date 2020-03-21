@@ -15,6 +15,16 @@ defmodule ChatLog do
           length: integer
         }
 
+  # TODO: Add more words.
+
+  @room_name_word_list [
+    "Banana",
+    "Apple",
+    "Orange",
+    "Crackers",
+    "Cheese"
+  ]
+
   def new(), do: %__MODULE__{}
 
   def log(chat_list, element) do
@@ -301,14 +311,4 @@ defmodule RicochetRobots.Room do
       [] -> room_name
     end
   end
-
-  # TODO: Add more words.
-
-  @room_name_word_list [
-    "Banana",
-    "Apple",
-    "Orange",
-    "Crackers",
-    "Cheese"
-  ]
 end

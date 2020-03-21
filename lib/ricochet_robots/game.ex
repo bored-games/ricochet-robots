@@ -226,7 +226,7 @@ defmodule RicochetRobots.Game do
   @doc ""
   @impl true
   def handle_cast({:award_points}, state) do
-    winner = Room.get_user(state.best_solution_player_name)
+    winner = Player.fetch(state.best_solution_player_name)
 
     if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
       Room.system_chat(
