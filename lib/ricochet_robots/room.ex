@@ -101,7 +101,7 @@ defmodule RicochetRobots.Room do
     room_name = generate_name()
 
     Logger.debug("Attempting to create room with name \"#{room_name}\".")
-    RoomSupervisor.start_link(%{opts | room_name: room_name})
+    RoomSupervisor.start_link(%{opts | "room_name" => room_name})
     system_chat(room_name, "Welcome to #{room_name}!")
 
     room_name

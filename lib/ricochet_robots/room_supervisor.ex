@@ -5,8 +5,8 @@ defmodule RicochetRobots.RoomSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("Starting RoomSupervisor link for room \"#{opts[:room_name]}\"")
-    Supervisor.start_link(__MODULE__, opts[:room_name])
+    Logger.debug("Starting RoomSupervisor link for room \"#{opts["room_name"]}\"")
+    Supervisor.start_link(__MODULE__, opts["room_name"])
   end
 
   @impl true

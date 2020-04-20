@@ -107,13 +107,20 @@ defmodule RicochetRobots.SocketHandler do
   """
   @impl true
   def websocket_handle({:json, "new_game", %{room_name: room_name}}, state) do
-    case Game.new(room_name) do
-      :ok ->
-        Room.system_chat(room_name, "#{state.player.username} has started a new game!")
+    case Game.fetch(room_name) do
+      {:ok, game} ->
+        Game.new_round(room_name)
         {:reply, {:text, "success"}, state}
 
       :error ->
-        {:reply, {:text, "failure"}, state}
+        case Game.new(room_name) do
+          :ok ->
+            Room.system_chat(room_name, "#{state.player.username} has started a new game!")
+            {:reply, {:text, "success"}, state}
+
+          :error ->
+            {:reply, {:text, "failure"}, state}
+        end
     end
   end
 
@@ -144,7 +151,9 @@ defmodule RicochetRobots.SocketHandler do
     {:reply, {:text, response}, state}
   end
 
-  @doc "new_chatline: need to send out new chatline to all users"
+  @doc """
+  TODO: New chatline: need to send out new chatline to all users
+  """
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
     Room.player_chat(state.registry_key, state.player, content["msg"])

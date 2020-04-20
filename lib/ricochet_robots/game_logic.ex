@@ -183,11 +183,32 @@ defmodule GameLogic do
     |> Enum.random()
   end
 
-  @doc "Return a randomized boundary board, its visual map, and corresponding goal positions."
+  @doc """
+  Return a randomized boundary board, its visual map, and corresponding goal positions.
+  """
   @spec populate_board() :: {map, map, [Game.goal_t()]}
   def populate_board() do
     goal_symbols = Game.goal_symbols() |> Enum.shuffle()
-    active_goal = goal_symbols |> List.first()
+
+    goal_active =
+      Enum.shuffle([
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ])
 
     solid = for c <- 0..32, into: %{}, do: {c, 1}
     open = for c <- 1..31, into: %{0 => 1, 32 => 1}, do: {c, 0}
@@ -233,7 +254,7 @@ defmodule GameLogic do
       ])
 
     {a, goals} =
-      add_L1(a, List.first(rlist), Enum.fetch!(goal_symbols, 0), Enum.fetch!(active_goal, 0), [])
+      add_L1(a, List.first(rlist), Enum.fetch!(goal_symbols, 0), Enum.fetch!(goal_active, 0), [])
 
     rlist = rand_distant_pairs([2, 4, 6, 8, 10, 12], [2, 4, 6, 8, 10, 12], rlist)
 
@@ -242,7 +263,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 1),
-        Enum.fetch!(active_goal, 1),
+        Enum.fetch!(goal_active, 1),
         goals
       )
 
@@ -253,7 +274,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 2),
-        Enum.fetch!(active_goal, 2),
+        Enum.fetch!(goal_active, 2),
         goals
       )
 
@@ -264,7 +285,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 3),
-        Enum.fetch!(active_goal, 3),
+        Enum.fetch!(goal_active, 3),
         goals
       )
 
@@ -276,7 +297,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 4),
-        Enum.fetch!(active_goal, 4),
+        Enum.fetch!(goal_active, 4),
         goals
       )
 
@@ -287,7 +308,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 5),
-        Enum.fetch!(active_goal, 5),
+        Enum.fetch!(goal_active, 5),
         goals
       )
 
@@ -298,7 +319,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 6),
-        Enum.fetch!(active_goal, 6),
+        Enum.fetch!(goal_active, 6),
         goals
       )
 
@@ -309,7 +330,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 7),
-        Enum.fetch!(active_goal, 7),
+        Enum.fetch!(goal_active, 7),
         goals
       )
 
@@ -321,7 +342,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 8),
-        Enum.fetch!(active_goal, 8),
+        Enum.fetch!(goal_active, 8),
         goals
       )
 
@@ -332,7 +353,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 9),
-        Enum.fetch!(active_goal, 9),
+        Enum.fetch!(goal_active, 9),
         goals
       )
 
@@ -343,7 +364,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 10),
-        Enum.fetch!(active_goal, 10),
+        Enum.fetch!(goal_active, 10),
         goals
       )
 
@@ -354,7 +375,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 11),
-        Enum.fetch!(active_goal, 11),
+        Enum.fetch!(goal_active, 11),
         goals
       )
 
@@ -366,7 +387,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 12),
-        Enum.fetch!(active_goal, 12),
+        Enum.fetch!(goal_active, 12),
         goals
       )
 
@@ -377,7 +398,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 13),
-        Enum.fetch!(active_goal, 13),
+        Enum.fetch!(goal_active, 13),
         goals
       )
 
@@ -388,7 +409,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 14),
-        Enum.fetch!(active_goal, 14),
+        Enum.fetch!(goal_active, 14),
         goals
       )
 
@@ -399,7 +420,7 @@ defmodule GameLogic do
         a,
         List.first(rlist),
         Enum.fetch!(goal_symbols, 15),
-        Enum.fetch!(active_goal, 15),
+        Enum.fetch!(goal_active, 15),
         goals
       )
 
@@ -423,14 +444,14 @@ defmodule GameLogic do
   # Add L
   @spec add_L1(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
           {map, [Game.goal_t()]}
-  defp add_L1(a, {row, col}, goal_string, active_goal, goals) do
+  defp add_L1(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col + 1], 1)
     a = put_in(a[row - 1][col], 1)
 
     {a,
      [
-       %{pos: %{y: div(row - 1, 2), x: div(col + 1, 2)}, symbol: goal_string, active: active_goal}
+       %{pos: %{y: div(row - 1, 2), x: div(col + 1, 2)}, symbol: goal_string, active: goal_active}
        | goals
      ]}
   end
@@ -438,14 +459,14 @@ defmodule GameLogic do
   # Add L, rotated 90 deg CW
   @spec add_L2(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
           {map, [Game.goal_t()]}
-  defp add_L2(a, {row, col}, goal_string, active_goal, goals) do
+  defp add_L2(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col + 1], 1)
     a = put_in(a[row + 1][col], 1)
 
     {a,
      [
-       %{pos: %{y: div(row + 1, 2), x: div(col + 1, 2)}, symbol: goal_string, active: active_goal}
+       %{pos: %{y: div(row + 1, 2), x: div(col + 1, 2)}, symbol: goal_string, active: goal_active}
        | goals
      ]}
   end
@@ -453,14 +474,14 @@ defmodule GameLogic do
   # Add L, rotated 180 deg
   @spec add_L3(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
           {map, [Game.goal_t()]}
-  defp add_L3(a, {row, col}, goal_string, active_goal, goals) do
+  defp add_L3(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
     a = put_in(a[row + 1][col], 1)
 
     {a,
      [
-       %{pos: %{y: div(row + 1, 2), x: div(col - 1, 2)}, symbol: goal_string, active: active_goal}
+       %{pos: %{y: div(row + 1, 2), x: div(col - 1, 2)}, symbol: goal_string, active: goal_active}
        | goals
      ]}
   end
@@ -468,14 +489,14 @@ defmodule GameLogic do
   # Add L, rotated 270 deg CW
   @spec add_L4(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
           {map, [Game.goal_t()]}
-  defp add_L4(a, {row, col}, goal_string, active_goal, goals) do
+  defp add_L4(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
     a = put_in(a[row - 1][col], 1)
 
     {a,
      [
-       %{pos: %{y: div(row - 1, 2), x: div(col - 1, 2)}, symbol: goal_string, active: active_goal}
+       %{pos: %{y: div(row - 1, 2), x: div(col - 1, 2)}, symbol: goal_string, active: goal_active}
        | goals
      ]}
   end
@@ -543,7 +564,6 @@ defmodule GameLogic do
   @doc """
   Take {x1, y1} and {x2, y2}; is the distance between them more than 2.0on
   "visual board" (4.0 on "boundary board")?
-
   """
   @spec dist_under_2?({integer, integer}, {integer, integer}) :: boolean
   def dist_under_2?({x1, y1}, {x2, y2}) do

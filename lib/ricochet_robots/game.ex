@@ -38,7 +38,8 @@ defmodule RicochetRobots.Game do
 
   @type t :: %{
           room_name: String.t(),
-          boundary_board: nil,
+          boundary_board: %{required(integer): %{reuqired(integer): integer}},
+          visual_board: %{required(integer): %{reuqired(integer): integer}},
           robots: [robot_t],
           goals: [goal_t],
           setting_countdown: integer,
@@ -51,14 +52,6 @@ defmodule RicochetRobots.Game do
           solution_moves: 0,
           solution_robots: 0,
           best_solution_player_name: String.t()
-        }
-
-  @typedoc "User: { username: String, color: String, score: integer }"
-  @type user_t :: %{
-          username: String.t(),
-          color: String.t(),
-          score: integer,
-          datestr: DateTime.t()
         }
 
   @typedoc "Position: { row: Integer, col: Integer }"
@@ -137,10 +130,14 @@ defmodule RicochetRobots.Game do
     clear_moves(room_name)
   end
 
+  def new_round(room_name) do
+    GenServer.cast(via_tuple(room_name), :new_round)
+  end
+
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(room_name) do
     case GenServer.call(via_tuple(room_name), :get_state) do
-      {:ok, player} -> {:ok, player}
+      {:ok, game} -> {:ok, game}
       _ -> :error
     end
   end
@@ -207,7 +204,7 @@ defmodule RicochetRobots.Game do
   robots are scored.
   """
   def award_points(room_name) do
-    GenServer.cast(via_tuple(room_name), {:award_points})
+    GenServer.cast(via_tuple(room_name), :award_points)
   end
 
   @impl true
@@ -217,15 +214,17 @@ defmodule RicochetRobots.Game do
 
   @impl true
   def handle_cast({:broadcast_to_players, message}, state) do
-    Poison.encode!(%{"action" => "new_game"})
-    |> Room.broadcast_to_players(state.room_name)
+    Room.broadcast_to_players(message, state.room_name)
 
     {:noreply, state}
   end
 
-  @doc ""
   @impl true
-  def handle_cast({:award_points}, state) do
+  def handle_cast(:new_round, state) do
+  end
+
+  @impl true
+  def handle_cast(:award_points, state) do
     winner = Player.fetch(state.best_solution_player_name)
 
     if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
