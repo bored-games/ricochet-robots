@@ -5,7 +5,7 @@ defmodule RicochetRobots.GameSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("started gamesupervisor link")
+    Logger.debug("Started RR.GameSupervisor link")
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 

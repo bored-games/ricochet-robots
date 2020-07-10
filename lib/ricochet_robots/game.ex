@@ -8,7 +8,7 @@ defmodule RicochetRobots.Game do
   use GenServer
   require Logger
 
-  alias RicochetRobots.{Room, GameLogic}
+  alias RicochetRobots.{Player, Room, GameLogic, GameSupervisor}
 
   defstruct room_name: nil,
             boundary_board: nil,
@@ -38,19 +38,19 @@ defmodule RicochetRobots.Game do
 
   @type t :: %{
           room_name: String.t(),
-          boundary_board: %{required(integer): %{reuqired(integer): integer}},
-          visual_board: %{required(integer): %{reuqired(integer): integer}},
+          boundary_board: map,
+          visual_board: map,
           robots: [robot_t],
           goals: [goal_t],
           setting_countdown: integer,
           setting_min_moves: integer,
           setting_puzzles_before_new: integer,
-          current_puzzles_until_new: 10,
-          current_countdown: 6,
-          current_timer: 0,
-          solution_found: false,
-          solution_moves: 0,
-          solution_robots: 0,
+          current_puzzles_until_new: integer,
+          current_countdown: integer,
+          current_timer: integer,
+          solution_found: boolean,
+          solution_moves: integer,
+          solution_robots: integer,
           best_solution_player_name: String.t()
         }
 
@@ -93,7 +93,7 @@ defmodule RicochetRobots.Game do
 
   @impl true
   @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
-  def init(%{room_Name: room_name} = opts) do
+  def init(%{room_Name: room_name} = _opts) do
     Logger.info("Started new game for room \"#{room_name}\".")
     {visual_board, boundary_board, goals} = GameLogic.populate_board()
     robots = GameLogic.populate_robots()
@@ -207,10 +207,6 @@ defmodule RicochetRobots.Game do
     GenServer.cast(via_tuple(room_name), :award_points)
   end
 
-  @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
-  end
 
   @impl true
   def handle_cast({:broadcast_to_players, message}, state) do
@@ -220,7 +216,7 @@ defmodule RicochetRobots.Game do
   end
 
   @impl true
-  def handle_cast(:new_round, state) do
+  def handle_cast(:new_round, _state) do
   end
 
   @impl true
@@ -233,8 +229,8 @@ defmodule RicochetRobots.Game do
         "#{winner.username} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution."
       )
 
-      return_user = %{winner | score: winner.score + 1}
-      Room.update_user(return_user)
+      # TODO ############### return_user = %{winner | score: winner.score + 1}
+      # TODO ############### Room.update_user(return_user)
       Room.broadcast_scoreboard(state.registry_key)
     else
       Room.system_chat(
@@ -264,6 +260,17 @@ defmodule RicochetRobots.Game do
       GameLogic.make_move(state.robots, state.boundary_board, moves)
     end
   end
+
+
+
+
+
+  @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+
 
   @impl true
   def handle_call({:solution_found, moves, player_name}, from, state) do

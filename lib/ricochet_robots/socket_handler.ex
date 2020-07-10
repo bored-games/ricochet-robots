@@ -28,6 +28,9 @@ defmodule RicochetRobots.SocketHandler do
 
   @impl true
   def websocket_init(state) do
+
+    IO.puts("sockets are initiing")
+
     {:ok, state}
   end
 
@@ -38,6 +41,9 @@ defmodule RicochetRobots.SocketHandler do
   """
   @impl true
   def websocket_handle({:text, json}, state) do
+
+    IO.puts("We have work to do")
+
     case Poison.decode!(json) do
       {:ok, payload} ->
         Logger.debug("Successfully decoded JSON transmission from \"#{state.player_name}\".")
@@ -108,7 +114,7 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:json, "new_game", %{room_name: room_name}}, state) do
     case Game.fetch(room_name) do
-      {:ok, game} ->
+      {:ok, _game} ->
         Game.new_round(room_name)
         {:reply, {:text, "success"}, state}
 
@@ -141,10 +147,10 @@ defmodule RicochetRobots.SocketHandler do
 
     Room.broadcast_scoreboard(state.registry_key)
 
-    Game.broadcast_visual_board()
-    Game.broadcast_robots()
-    Game.broadcast_goals()
-    Game.broadcast_clock()
+    Game.broadcast_visual_board(state.registry_key)
+    Game.broadcast_robots(state.registry_key)
+    Game.broadcast_goals(state.registry_key)
+    Game.broadcast_clock(state.registry_key)
 
     # send out user initialization info to client
     response = Poison.encode!(%{content: state[:player], action: "update_user"})
@@ -187,7 +193,7 @@ defmodule RicochetRobots.SocketHandler do
     new_state = %{state | player: new_user}
 
     # send scoreboard to all
-    Player.update(new_user)
+    # TODO ######################### Player.update(new_user)
     Room.broadcast_scoreboard(state.registry_key)
 
     # send client their new user info
@@ -201,7 +207,7 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "submit_movelist", content}, state) do
     Logger.debug("[Move] " <> state[:player].username <> " --> ")
 
-    new_robots = Game.move_robots(content, state.player.unique_key)
+    new_robots = Game.move_robots(state.registry_key, content, state.player.unique_key)
     response = Poison.encode!(%{content: new_robots, action: "update_robots"})
     {:reply, {:text, response}, state}
   end

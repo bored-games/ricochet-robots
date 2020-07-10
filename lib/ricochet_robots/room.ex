@@ -15,16 +15,6 @@ defmodule ChatLog do
           length: integer
         }
 
-  # TODO: Add more words.
-
-  @room_name_word_list [
-    "Banana",
-    "Apple",
-    "Orange",
-    "Crackers",
-    "Cheese"
-  ]
-
   def new(), do: %__MODULE__{}
 
   def log(chat_list, element) do
@@ -37,6 +27,8 @@ defmodule ChatLog do
     end
   end
 end
+
+
 
 defmodule RicochetRobots.Room do
   @moduledoc """
@@ -51,6 +43,16 @@ defmodule RicochetRobots.Room do
   - Unmute user
 
   """
+  
+  # TODO: Add more words.
+
+  @room_name_word_list [
+    "Banana",
+    "Apple",
+    "Orange",
+    "Crackers",
+    "Cheese"
+  ]
 
   use GenServer
   require Logger
@@ -77,14 +79,16 @@ defmodule RicochetRobots.Room do
           chat: ChatLog.t()
         }
 
-  def start_link(%{room_name: room_name} = opts) do
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
+  def start_link(opts) do
+    Logger.debug("Here in ROOM START_LINK with #{inspect(opts)}")
+    #GenServer.start_link(__MODULE__, opts, name: via_tuple("PIZZA_PARTY"))
+    GenServer.start_link(__MODULE__, %{room_name: "PIZZA_PARTY", name: "TEST"}, name: via_tuple("PIZZA_PARTY"))
   end
 
   @impl true
   @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
   def init(%{room_name: room_name} = opts) do
-    Logger.info("Opened new room.")
+    Logger.info("Opened new room `#{room_name}`.")
 
     state = %__MODULE__{
       name: room_name,
@@ -297,7 +301,8 @@ defmodule RicochetRobots.Room do
   end
 
   defp via_tuple(room_name) do
-    {:via, Registry.RoomRegistry, {__MODULE__, room_name}}
+    Logger.debug("ok so lets start #{room_name}")
+    {:via, Registry, {Registry.RoomRegistry, room_name}}
   end
 
   @spec generate_name() :: String.t()

@@ -6,7 +6,7 @@ defmodule RicochetRobots.Player do
   """
 
   require Logger
-  alias RicochetRobots.{RoomSupervisor, PlayerSupervisor}
+  alias RicochetRobots.{PlayerSupervisor}
 
   defstruct name: nil,
             nickname: nil,
@@ -103,14 +103,14 @@ defmodule RicochetRobots.Player do
     "#e0e0e0"
   ]
 
-  def start_link(%{player_name: player_name, socket_pid: socket_pid} = opts) do
+  def start_link(%{player_name: player_name, socket_pid: _socket_pid} = opts) do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
   end
 
-  @impl true
+ # @impl true
   @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
-  def init(%{player_name: player_name, socket_pid: socket_pid} = opts) do
-    Logger.info("Started new player.")
+  def init(%{player_name: player_name, socket_pid: socket_pid} = _opts) do
+    Logger.info("Created new player.")
 
     state = %__MODULE__{
       name: player_name,
@@ -123,7 +123,7 @@ defmodule RicochetRobots.Player do
 
   @spec new(pid()) :: String.t()
   def new(socket_pid) do
-    player_name = Player.generate_nickname()
+    player_name = generate_name()
 
     Logger.debug("Attempting to create player with name \"#{player_name}\".")
     PlayerSupervisor.start_link(%{player_name: player_name, socket_pid: socket_pid})
@@ -139,7 +139,7 @@ defmodule RicochetRobots.Player do
     end
   end
 
-  @impl true
+ # @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, state, state}
   end

@@ -1,4 +1,4 @@
-defmodule GameLogic do
+defmodule RicochetRobots.GameLogic do
   @moduledoc """
   This module contains functions that handle game logic.
   """

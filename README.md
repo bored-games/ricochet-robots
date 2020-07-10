@@ -6,6 +6,10 @@ This repository is meant to be paired with a frontend. For a frontend, see
 https://github.com/bored-games/robots-client.
 
 ## Deployment
+`mix deps.get`
+and then
+~~`mix run --no-halt`~~
+`iex.bat -S run`
 
 ## License
 

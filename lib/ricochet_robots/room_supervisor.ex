@@ -5,8 +5,8 @@ defmodule RicochetRobots.RoomSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("Starting RoomSupervisor link for room \"#{opts["room_name"]}\"")
-    Supervisor.start_link(__MODULE__, opts["room_name"])
+    Logger.debug("Starting RoomSupervisor link with opts: #{inspect(opts)}")
+    Supervisor.start_link(__MODULE__, opts)
   end
 
   @impl true
@@ -18,6 +18,9 @@ defmodule RicochetRobots.RoomSupervisor do
       }
     ]
 
-    Supervisor.init(children, strategy: :temporary)
+    Logger.debug("got this far... #{inspect(opts)}")
+    #RicochetRobots.Room.child_spec(room_name: "pizzaParty", name: RicochetRobots.RoomSupervisor)
+    
+    Supervisor.init(children, strategy: :one_for_one)
   end
 end
