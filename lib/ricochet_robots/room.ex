@@ -41,6 +41,7 @@ defmodule RicochetRobots.Room do
   - Get chat history
   - Mute user
   - Unmute user
+  - Private (unlisted) rooms
 
   """
   
@@ -80,6 +81,7 @@ defmodule RicochetRobots.Room do
         }
 
   def start_link(opts) do
+    # So, I think this is only for the default room constructor used by RoomSupervisor
     Logger.debug("Here in ROOM START_LINK with #{inspect(opts)}")
     #GenServer.start_link(__MODULE__, opts, name: via_tuple("PIZZA_PARTY"))
     GenServer.start_link(__MODULE__, %{room_name: "PIZZA_PARTY", name: "TEST"}, name: via_tuple("PIZZA_PARTY"))
@@ -99,7 +101,7 @@ defmodule RicochetRobots.Room do
   end
 
   @doc """
-  Create a new room and return it's name.
+  Create a new room and return its name.
   """
   def new(opts) do
     room_name = generate_name()

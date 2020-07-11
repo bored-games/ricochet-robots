@@ -5,7 +5,7 @@ defmodule RicochetRobots.PlayerSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("Starting PlayerSupervisor link for player \"#{opts[:player_name]}\"")
+    Logger.debug("Starting PlayerSupervisor link for player \"#{inspect(opts)}\"")
     Supervisor.start_link(__MODULE__, opts[:player_name])
   end
 
@@ -18,6 +18,6 @@ defmodule RicochetRobots.PlayerSupervisor do
       }
     ]
 
-    Supervisor.init(children, strategy: :temporary)
+    Supervisor.init(children, strategy: :one_for_one)
   end
 end

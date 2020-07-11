@@ -20,17 +20,22 @@ defmodule RicochetRobots.SocketHandler do
 
   @impl true
   def init(request, _state) do
+    
     state = %__MODULE__{player_name: Player.new(self())}
 
+    Registry.RoomPlayerRegistry
+    |> Registry.register(request.path, {})
+
+
     Logger.info("New websocket connection initiated by \"#{state.player_name}\".")
+    # Logger.info("New websocket connection initiated by \"#{state.player_name}\" (#{inspect(request)}).")
     {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
   end
 
   @impl true
   def websocket_init(state) do
-
-    IO.puts("sockets are initiing")
-
+    
+    Logger.debug("YES \"#{inspect(state)}\".")
     {:ok, state}
   end
 
@@ -42,7 +47,7 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:text, json}, state) do
 
-    IO.puts("We have work to do")
+    IO.puts("We have work to do #{json}, #{state}")
 
     case Poison.decode!(json) do
       {:ok, payload} ->
@@ -113,6 +118,8 @@ defmodule RicochetRobots.SocketHandler do
   """
   @impl true
   def websocket_handle({:json, "new_game", %{room_name: room_name}}, state) do
+    Logger.debug("[New game] remove log msg when it's working.")
+
     case Game.fetch(room_name) do
       {:ok, _game} ->
         Game.new_round(room_name)
@@ -162,6 +169,7 @@ defmodule RicochetRobots.SocketHandler do
   """
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
+    Logger.debug("[Room chat] remove log msg when it's working.")
     Room.player_chat(state.registry_key, state.player, content["msg"])
 
     {:reply, {:text, "success"}, state}
@@ -236,11 +244,12 @@ defmodule RicochetRobots.SocketHandler do
   all clients.
   """
   @impl true
-  def terminate(_reason, _req, state) do
-    state.rooms
-    Room.system_chat(state.rooms, state.player_name <> " has left.")
-    Room.remove_player(state.registry_key, state.player.unique_key)
-    Room.broadcast_scoreboard(state.registry_key)
+  def terminate(reason, _req, state) do
+    Logger.debug("Termination #{inspect(reason)} -  #{inspect(state)}")
+    # state.rooms
+    # Room.system_chat(state.rooms, state.player_name <> " has left.")
+    # Room.remove_player(state.registry_key, state.player.unique_key)
+    # Room.broadcast_scoreboard(state.registry_key)
     :ok
   end
 end
