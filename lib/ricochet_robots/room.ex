@@ -82,14 +82,17 @@ defmodule RicochetRobots.Room do
 
   def start_link(opts) do
     # So, I think this is only for the default room constructor used by RoomSupervisor
-    Logger.debug("Here in ROOM START_LINK with #{inspect(opts)}")
-    #GenServer.start_link(__MODULE__, opts, name: via_tuple("PIZZA_PARTY"))
-    GenServer.start_link(__MODULE__, %{room_name: "PIZZA_PARTY", name: "TEST"}, name: via_tuple("PIZZA_PARTY"))
+    
+    room_name = Map.get(opts, :room_name, "TESTROOM")
+    Logger.debug("In Room.start_link with #{inspect(opts)}")
+    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
   end
 
   @impl true
   @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
-  def init(%{room_name: room_name} = opts) do
+  def init(opts) do
+    
+    room_name = opts[:room_name]
     Logger.info("Opened new room `#{room_name}`.")
 
     state = %__MODULE__{
@@ -106,9 +109,11 @@ defmodule RicochetRobots.Room do
   def new(opts) do
     room_name = generate_name()
 
-    Logger.debug("Attempting to create room with name \"#{room_name}\".")
-    RoomSupervisor.start_link(%{opts | "room_name" => room_name})
-    system_chat(room_name, "Welcome to #{room_name}!")
+    opts = Map.put(opts, :room_name, room_name)
+
+    Logger.debug("Attempting to create room through Room.new() with name \"#{room_name}\" and opts #{inspect(opts)}.")
+    RoomSupervisor.start_link(opts)
+    # system_chat(room_name, "Welcome to #{room_name}!")
 
     room_name
   end
@@ -121,7 +126,7 @@ defmodule RicochetRobots.Room do
       for {player_name, _socket} <- entries, do: remove_player(room_name, player_name)
     end)
 
-    Logger.debug("Stopping GenServer, bye bye!")
+    Logger.debug("Stopping Room, bye bye!")
     GenServer.stop(via_tuple(room_name), :normal)
   end
 
@@ -136,6 +141,8 @@ defmodule RicochetRobots.Room do
 
   @spec add_player(String.t(), integer) :: :ok | :error
   def add_player(room_name, player_name) do
+    Logger.info("[Room.add_player] #{player_name} to #{room_name}")
+
     GenServer.call(via_tuple(room_name), {:add_player, player_name})
   end
 
@@ -170,6 +177,9 @@ defmodule RicochetRobots.Room do
   """
   @impl true
   def handle_call({:add_player, player_name}, _from, state) do
+    
+    Logger.info("HERE AT LAST")
+
     if map_size(state.players) == state.player_limit do
       Logger.debug("Room at player limit, rejecting player \"#{player_name}\".")
       {:reply, :error, state}
@@ -177,12 +187,12 @@ defmodule RicochetRobots.Room do
       # Make sure player really exists.
       case Player.fetch(player_name) do
         {:ok, player} ->
-          Registry.register(Registry.RoomPlayerRegistry, player_name, player.socket)
+          # Registry.register(Registry.RoomPlayerRegistry, player_name, player.socket)
 
           Logger.info("Player \"#{player.name}\" joined.")
-          system_chat(state.name, "#{player.name} joined the room.")
+          # system_chat(state.name, "#{player.name} joined the room.")
 
-          state = %__MODULE__{state | players: MapSet.put(state.players, player.name)}
+          # state = %__MODULE__{state | players: MapSet.put(state.players, player.name)}
           {:reply, :ok, state}
 
         :error ->
@@ -303,8 +313,7 @@ defmodule RicochetRobots.Room do
   end
 
   defp via_tuple(room_name) do
-    Logger.debug("ok so lets start #{room_name}")
-    {:via, Registry, {Registry.RoomRegistry, room_name}}
+    {:via, Registry.RoomRegistry, {:room_name, room_name}}
   end
 
   @spec generate_name() :: String.t()

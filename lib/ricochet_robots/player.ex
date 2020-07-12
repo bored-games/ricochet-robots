@@ -7,6 +7,7 @@ defmodule RicochetRobots.Player do
 
   require Logger
   alias RicochetRobots.{PlayerSupervisor}
+  use GenServer
 
   defstruct name: nil,
             nickname: nil,
@@ -103,20 +104,26 @@ defmodule RicochetRobots.Player do
     "#e0e0e0"
   ]
 
-  def start_link(%{player_name: player_name, socket_pid: _socket_pid} = opts) do
-    GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
+  def start_link(opts) do
+    
+    Logger.debug("In Player.start_link with #{inspect(opts.player_name)}")
+    #{:ok, _} = GenServer.start_link(__MODULE__, [], name: via_tuple(opts.player_name))
+    {:ok, _} = GenServer.start_link(__MODULE__, opts)
   end
 
  # @impl true
-  @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
-  def init(%{player_name: player_name, socket_pid: socket_pid} = _opts) do
-    Logger.info("Created new player.")
+ # @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
+  def init(opts) do
+    
+    %{player_name: player_name, socket_pid: socket_pid} = opts
+    
 
     state = %__MODULE__{
       name: player_name,
       color: generate_color(),
       socket_pid: socket_pid
     }
+    Logger.info("Created new player #{inspect(opts)}.")
 
     {:ok, state}
   end
@@ -144,8 +151,12 @@ defmodule RicochetRobots.Player do
     {:reply, state, state}
   end
 
+  
   defp via_tuple(player_name) do
-    {:via, Registry.PlayerRegistry, {__MODULE__, player_name}}
+    #Logger.debug("[Player.via_tuple] #{inspect(player_name)}")
+    # {:via, Registry, {Registry.PlayerRegistry, player_name}}
+    # {:via, Registry, {:player_name, player_name}}
+    {:via, Registry.PlayerRegistry, {:player_name, player_name}}
   end
 
   # Return a new nickname. We generate a nickname by combining 3 words from 3

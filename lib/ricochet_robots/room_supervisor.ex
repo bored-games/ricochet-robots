@@ -5,21 +5,26 @@ defmodule RicochetRobots.RoomSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("Starting RoomSupervisor link with opts: #{inspect(opts)}")
+    Logger.debug("RoomSupervisor start_link with opts: #{inspect(opts)}")
     Supervisor.start_link(__MODULE__, opts)
   end
 
+  # called any time someone does RoomSupervisor.start_link(opts), obviously
   @impl true
   def init(opts) do
+    
+    Logger.debug("RoomSupervisor init... #{inspect(opts)}")
+
     children = [
       %{
         id: RicochetRobots.Room,
-        start: {RicochetRobots.Room, :start_link, opts}
-      }
+        start: {RicochetRobots.Room, :start_link, [opts]}
+      },
+      # Registry.child_spec(
+      #   keys: :unique,
+      #   name: Registry.RoomPlayerRegistry
+      # )
     ]
-
-    Logger.debug("got this far... #{inspect(opts)}")
-    #RicochetRobots.Room.child_spec(room_name: "pizzaParty", name: RicochetRobots.RoomSupervisor)
     
     Supervisor.init(children, strategy: :one_for_one)
   end

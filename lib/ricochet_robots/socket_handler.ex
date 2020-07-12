@@ -19,23 +19,19 @@ defmodule RicochetRobots.SocketHandler do
   @idle_timeout 90_000
 
   @impl true
-  def init(request, _state) do
+  def init(request, state) do
+    
     
     state = %__MODULE__{player_name: Player.new(self())}
+    Logger.info("New websocket connection initiated by \"#{inspect(state)}\".")
 
-    Registry.RoomPlayerRegistry
-    |> Registry.register(request.path, {})
-
-
-    Logger.info("New websocket connection initiated by \"#{state.player_name}\".")
-    # Logger.info("New websocket connection initiated by \"#{state.player_name}\" (#{inspect(request)}).")
     {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
   end
 
   @impl true
   def websocket_init(state) do
     
-    Logger.debug("YES \"#{inspect(state)}\".")
+    Logger.debug("websocket_init complete: \"#{inspect(state)}\".")
     {:ok, state}
   end
 
@@ -45,18 +41,19 @@ defmodule RicochetRobots.SocketHandler do
   handlers. If invalid, return an error to the client.
   """
   @impl true
-  def websocket_handle({:text, json}, state) do
+  def websocket_handle({:text, json} = test, state) do
 
-    IO.puts("We have work to do #{json}, #{state}")
+    Logger.debug("WE HAVE WORK TO DO \"#{inspect(test)}, #{inspect(state)}\".")
 
-    case Poison.decode!(json) do
+    case Poison.decode(json) do
       {:ok, payload} ->
-        Logger.debug("Successfully decoded JSON transmission from \"#{state.player_name}\".")
+        Logger.debug("Successfully decoded `#{payload["action"]}` JSON transmission from \"#{state.player_name}\".")
         websocket_handle({:json, payload["action"], payload["content"]}, state)
 
       {:error, _} ->
         Logger.debug("Failed to decode JSON transmission from \"#{state.player_name}\".")
         {:reply, {:text, "Failed to decode JSON."}, state}
+
     end
   end
 
@@ -85,9 +82,13 @@ defmodule RicochetRobots.SocketHandler do
     player_limit: The player limit for the new room. By default, 8.
   """
   @impl true
-  def websocket_handle({:json, "create_room", opts}, state) do
-    room_name = Room.new(opts)
-    Room.add_player(room_name, state.player_name)
+  def websocket_handle({:json, "create_room", content}, state) do
+    # room_name = Room.new(opts)
+    Logger.debug("websocket_handle create_room with #{content}")
+    room_name = Room.new( %{room_name: content} )
+    
+    # Room.add_player(room_name, state.player_name)
+
     {:reply, {:text, "success"}, state}
   end
 

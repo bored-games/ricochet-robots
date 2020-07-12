@@ -12,7 +12,7 @@ defmodule RicochetRobots.GameSupervisor do
   @impl true
   def init(reg_key) do
     children = [
-      # THIS SHOULD NOT BE HARDCODED
+      # THIS SHOULD NOT BE HARDCODED someday
       %{
         id: RicochetRobots.Game,
         start: {RicochetRobots.Game, :start_link, [%{registry_key: reg_key}]}

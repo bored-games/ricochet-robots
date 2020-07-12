@@ -24,12 +24,7 @@ defmodule RicochetRobots do
       Registry.child_spec(
         keys: :unique,
         name: Registry.PlayerRegistry
-      ),
-      Registry.child_spec(
-        keys: :duplicate,
-        name: Registry.RoomPlayerRegistry
-      ),
-      RicochetRobots.RoomSupervisor.child_spec(name: RicochetRobots.RoomSupervisor)
+      )
     ]
 
     opts = [strategy: :one_for_one, name: RicochetRobots.Application]
