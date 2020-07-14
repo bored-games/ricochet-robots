@@ -50,17 +50,19 @@
         // create player
         // start game
         
-        data = '{"action": "create_room", "content": "this_is_my_room"}';
-        console.log("Message from client:")
-        console.log(data);
-        socket.send( data );
-
        
+
         data = '{"action": "ping", "content": ""}';
         console.log("Message from client:")
         console.log(data);
         socket.send( data );
       
+
+        // data = '{"action": "create_room", "content": "this_is_my_room"}';
+        // console.log("Message from client:")
+        // console.log(data);
+        // socket.send( data );
+
 
       }
 

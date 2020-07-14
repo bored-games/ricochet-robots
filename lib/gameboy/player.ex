@@ -129,6 +129,7 @@ defmodule Gameboy.Player do
     # Registry.register(Registry.PlayerRegistry, {:player_name, player_name}, socket_pid)
 
     Logger.info("Created new player #{inspect(opts)}.")
+    Logger.debug("There are now: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
 
     {:ok, state}
   end
@@ -145,9 +146,12 @@ defmodule Gameboy.Player do
 
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(player_name) do
-    Logger.debug("The reg: #{inspect(Registry.count(Registry.PlayerRegistryxxxxxx))}")
-    Logger.debug("looking for #{inspect(via_tuple2(player_name))}")
-    case GenServer.call(via_tuple2(player_name), :get_state) do
+    Logger.debug("The PlayerRegister has: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
+    test = "ok"
+    Logger.debug("should fail: looking for #{inspect( GenServer.whereis( via_tuple2(test) ) )}")
+    theTUPLE = via_tuple2(player_name)
+    Logger.debug("looking for #{inspect( theTUPLE )}")
+    case GenServer.call(theTUPLE, :get_state) do
       {:ok, player} -> {:ok, player}
       _ -> :error
     end
@@ -159,14 +163,14 @@ defmodule Gameboy.Player do
     {:reply, {:ok, state}, state}
   end
 
-  defp via_tuple_old(player_name) do
+  defp via_tuple2(player_name) do
     {:via, Registry, {Registry.PlayerRegistry, player_name}}
     # {:via, Registry.PlayerRegistry, {:player_name, player_name}}
   end
   
-  defp via_tuple2(player_name) do
+  defp via_tuple_old(player_name) do
     # {:via, Registry.PlayerRegistry, player_name}
-    {:via, Registry.PlayerRegistry, {:player_name, player_name}}
+    {:via, Registry.PlayerRegistryXXX, player_name}
   end
 
   # Return a new nickname. We generate a nickname by combining 3 words from 3
