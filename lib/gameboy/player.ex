@@ -125,8 +125,6 @@ defmodule Gameboy.Player do
       color: generate_color(),
       socket_pid: socket_pid
     }
-    # {:ok, _} = Registry.register(Registry.PlayerRegistry, player_name, socket_pid)
-    # Registry.register(Registry.PlayerRegistry, {:player_name, player_name}, socket_pid)
 
     Logger.info("Created new player #{inspect(opts)}.")
     Logger.debug("There are now: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
@@ -147,14 +145,17 @@ defmodule Gameboy.Player do
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(player_name) do
     Logger.debug("The PlayerRegister has: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
-    test = "ok"
-    Logger.debug("should fail: looking for #{inspect( GenServer.whereis( via_tuple2(test) ) )}")
-    theTUPLE = via_tuple2(player_name)
-    Logger.debug("looking for #{inspect( theTUPLE )}")
-    case GenServer.call(theTUPLE, :get_state) do
-      {:ok, player} -> {:ok, player}
-      _ -> :error
-    end
+    
+    case GenServer.whereis(via_tuple2(player_name)) do
+      nil -> :error
+
+      proc -> 
+        Logger.debug("looking for #{inspect( via_tuple2(player_name) )}")
+        case GenServer.call(via_tuple2(player_name), :get_state) do
+          {:ok, player} -> {:ok, player}
+          _ -> :error
+        end
+      end
   end
 
   @impl true
