@@ -109,12 +109,11 @@ defmodule Gameboy.Player do
   def start_link(opts) do
     
     Logger.debug("In Player.start_link with #{inspect(opts.player_name)}")
-
     
     player_name = Map.get(opts, :player_name, "PLAYANAME")
 
     {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple2(player_name))
-    #{:ok, _} = GenServer.start_link(__MODULE__, opts)
+
   end
 
   @impl true
@@ -127,6 +126,7 @@ defmodule Gameboy.Player do
       socket_pid: socket_pid
     }
     # {:ok, _} = Registry.register(Registry.PlayerRegistry, player_name, socket_pid)
+    # Registry.register(Registry.PlayerRegistry, {:player_name, player_name}, socket_pid)
 
     Logger.info("Created new player #{inspect(opts)}.")
 
@@ -145,7 +145,7 @@ defmodule Gameboy.Player do
 
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(player_name) do
-    Logger.debug("The reg: #{inspect(Registry.count(Registry.PlayerRegistry))}")
+    Logger.debug("The reg: #{inspect(Registry.count(Registry.PlayerRegistryxxxxxx))}")
     Logger.debug("looking for #{inspect(via_tuple2(player_name))}")
     case GenServer.call(via_tuple2(player_name), :get_state) do
       {:ok, player} -> {:ok, player}
@@ -159,10 +159,14 @@ defmodule Gameboy.Player do
     {:reply, {:ok, state}, state}
   end
 
-  
-  defp via_tuple2(player_name) do
+  defp via_tuple_old(player_name) do
     {:via, Registry, {Registry.PlayerRegistry, player_name}}
     # {:via, Registry.PlayerRegistry, {:player_name, player_name}}
+  end
+  
+  defp via_tuple2(player_name) do
+    # {:via, Registry.PlayerRegistry, player_name}
+    {:via, Registry.PlayerRegistry, {:player_name, player_name}}
   end
 
   # Return a new nickname. We generate a nickname by combining 3 words from 3
