@@ -1,13 +1,14 @@
-defmodule RicochetRobots.Player do
+defmodule Gameboy.Player do
   @moduledoc """
   A `Player` is a user, including any relevant settings or information.
 
   `color` is a "#rrggbb" string.
   """
 
-  require Logger
-  alias RicochetRobots.{PlayerSupervisor}
   use GenServer
+  require Logger
+  
+  alias Gameboy.{PlayerSupervisor}
 
   defstruct name: nil,
             nickname: nil,
@@ -83,7 +84,8 @@ defmodule RicochetRobots.Player do
     "borg",
     "9000",
     "100",
-    "2020"
+    "2020",
+    ""
   ]
 
   @colors [
@@ -107,22 +109,25 @@ defmodule RicochetRobots.Player do
   def start_link(opts) do
     
     Logger.debug("In Player.start_link with #{inspect(opts.player_name)}")
-    #{:ok, _} = GenServer.start_link(__MODULE__, [], name: via_tuple(opts.player_name))
-    {:ok, _} = GenServer.start_link(__MODULE__, opts)
+
+    
+    player_name = Map.get(opts, :player_name, "PLAYANAME")
+
+    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple2(player_name))
+    #{:ok, _} = GenServer.start_link(__MODULE__, opts)
   end
 
- # @impl true
- # @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
-  def init(opts) do
+  @impl true
+  @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
+  def init(%{player_name: player_name, socket_pid: socket_pid} = opts) do
     
-    %{player_name: player_name, socket_pid: socket_pid} = opts
-    
-
     state = %__MODULE__{
       name: player_name,
       color: generate_color(),
       socket_pid: socket_pid
     }
+    # {:ok, _} = Registry.register(Registry.PlayerRegistry, player_name, socket_pid)
+
     Logger.info("Created new player #{inspect(opts)}.")
 
     {:ok, state}
@@ -140,23 +145,24 @@ defmodule RicochetRobots.Player do
 
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(player_name) do
-    case GenServer.call(via_tuple(player_name), :get_state) do
+    Logger.debug("The reg: #{inspect(Registry.count(Registry.PlayerRegistry))}")
+    Logger.debug("looking for #{inspect(via_tuple2(player_name))}")
+    case GenServer.call(via_tuple2(player_name), :get_state) do
       {:ok, player} -> {:ok, player}
       _ -> :error
     end
   end
 
- # @impl true
+  @impl true
   def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
+    Logger.debug("do whatever you want")
+    {:reply, {:ok, state}, state}
   end
 
   
-  defp via_tuple(player_name) do
-    #Logger.debug("[Player.via_tuple] #{inspect(player_name)}")
-    # {:via, Registry, {Registry.PlayerRegistry, player_name}}
-    # {:via, Registry, {:player_name, player_name}}
-    {:via, Registry.PlayerRegistry, {:player_name, player_name}}
+  defp via_tuple2(player_name) do
+    {:via, Registry, {Registry.PlayerRegistry, player_name}}
+    # {:via, Registry.PlayerRegistry, {:player_name, player_name}}
   end
 
   # Return a new nickname. We generate a nickname by combining 3 words from 3

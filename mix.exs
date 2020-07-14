@@ -1,21 +1,21 @@
-defmodule RicochetRobots.MixProject do
+defmodule Gameboy.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :ricochet_robots,
+      app: :gameboy,
       version: "0.1.0",
       elixir: "~> 1.9",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
 
       # Docs
-      name: "RicochetRobots",
+      name: "Gameboy",
       source_url: "https://github.com/gg314/TODO",
       homepage_url: "http://TODO.com",
       docs: [
         # The main page in the docs
-        main: "RicochetRobots",
+        main: "Gameboy",
         logo: "src/assets/logo.png",
         extras: ["README.md"]
       ]
@@ -24,7 +24,7 @@ defmodule RicochetRobots.MixProject do
 
   def application do
     [
-      mod: {RicochetRobots, []},
+      mod: {Gameboy, []},
       extra_applications: [:logger]
     ]
   end

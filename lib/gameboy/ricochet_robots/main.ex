@@ -1,4 +1,4 @@
-defmodule RicochetRobots.Game do
+defmodule Gameboy.RicochetRobots.Main do
   @moduledoc """
   Ricochet Robots game components, including settings, solving, game state, etc.
 
@@ -8,7 +8,8 @@ defmodule RicochetRobots.Game do
   use GenServer
   require Logger
 
-  alias RicochetRobots.{Player, Room, GameLogic, GameSupervisor}
+  alias Gameboy.{Player, Room, GameSupervisor}
+  alias Gameboy.RicochetRobots.{GameLogic}
 
   defstruct room_name: nil,
             boundary_board: nil,
@@ -92,8 +93,8 @@ defmodule RicochetRobots.Game do
   end
 
   @impl true
-  @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
-  def init(%{room_Name: room_name} = _opts) do
+  @spec init(%{room_name: pid()}) :: {:ok, %__MODULE__{}}
+  def init(%{room_name: room_name} = _opts) do
     Logger.info("Started new game for room \"#{room_name}\".")
     {visual_board, boundary_board, goals} = GameLogic.populate_board()
     robots = GameLogic.populate_robots()
@@ -106,7 +107,7 @@ defmodule RicochetRobots.Game do
       robots: robots
     }
 
-    :timer.send_interval(1000, :timerevent)
+    :timer.send_interval(5000, :timerevent)
 
     {:ok, state}
   end
@@ -118,21 +119,28 @@ defmodule RicochetRobots.Game do
   """
   @spec new(room_name: String.t()) :: nil
   def new(room_name) do
-    Logger.debug("[Game: New game]")
+    Logger.debug("[Ricochet Robots: New game] started in `#{room_name}`")
     GameSupervisor.start_link(%{room_name: room_name})
-    Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
+    # Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
 
-    broadcast_new_game(room_name)
-    broadcast_visual_board(room_name)
-    broadcast_robots(room_name)
-    broadcast_goals(room_name)
-    broadcast_clock(room_name)
-    clear_moves(room_name)
+    # broadcast_new_game(room_name)
+    # broadcast_visual_board(room_name)
+    # broadcast_robots(room_name)
+    # broadcast_goals(room_name)
+    # broadcast_clock(room_name)
+    # clear_moves(room_name)
   end
 
   def new_round(room_name) do
     GenServer.cast(via_tuple(room_name), :new_round)
   end
+
+  
+  @spec fetch2(String.t()) :: {:ok, String.t()} | :error
+  def fetch2(game_name) do
+      {:ok, game_name}
+  end
+
 
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(room_name) do
@@ -311,7 +319,7 @@ defmodule RicochetRobots.Game do
             action: "clear_moves_queue"
           })
 
-        Registry.RicochetRobots
+        Registry.Gameboy
         |> Registry.dispatch(state.registry_key, fn entries ->
           for {pid, _} <- entries do
             if pid == from |> elem(0) do
@@ -339,7 +347,7 @@ defmodule RicochetRobots.Game do
     countdown = state.current_countdown - if state.solution_found, do: 1, else: 0
     timer = state.current_timer + 1
 
-    if countdown <= 0, do: finish_round(state.room_name)
+    # if countdown <= 0, do: finish_round(state.room_name)
 
     {:noreply, %{state | current_countdown: countdown, current_timer: timer}}
   end
@@ -349,7 +357,12 @@ defmodule RicochetRobots.Game do
     # TODO: some kind of display!!!
   end
 
-  defp via_tuple(room_name) do
-    {:via, Registry.GameRegistry, {__MODULE__, room_name}}
+  
+  defp via_tuple(player_name) do
+    {:via, Registry, {Registry.GameRegistry, player_name}}
+    # {:via, Registry.GameRegistry, {__MODULE__, room_name}}
   end
+  
+
+  
 end

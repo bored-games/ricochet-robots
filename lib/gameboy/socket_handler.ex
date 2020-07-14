@@ -1,4 +1,4 @@
-defmodule RicochetRobots.SocketHandler do
+defmodule Gameboy.SocketHandler do
   @moduledoc """
   Controls the way a user interacts with a `Room` (e.g. chat) or a `Game` (e.g.
   making a move).
@@ -7,30 +7,28 @@ defmodule RicochetRobots.SocketHandler do
   """
 
   require Logger
-  alias RicochetRobots.{Player, Room, Game}
+  alias Gameboy.{Player, Room}
 
   defstruct player_name: nil
 
   @type t :: %{
-          player_name: String.t()
+          player_name: String.t(),
         }
 
   @behaviour :cowboy_websocket
   @idle_timeout 90_000
 
   @impl true
-  def init(request, state) do
-    
-    
-    state = %__MODULE__{player_name: Player.new(self())}
+  def init(request, _state) do
+    state = %__MODULE__{
+      player_name: Player.new(self())
+    }
     Logger.info("New websocket connection initiated by \"#{inspect(state)}\".")
-
     {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
   end
 
   @impl true
   def websocket_init(state) do
-    
     Logger.debug("websocket_init complete: \"#{inspect(state)}\".")
     {:ok, state}
   end
@@ -43,7 +41,7 @@ defmodule RicochetRobots.SocketHandler do
   @impl true
   def websocket_handle({:text, json} = test, state) do
 
-    Logger.debug("WE HAVE WORK TO DO \"#{inspect(test)}, #{inspect(state)}\".")
+    Logger.debug("WE HAVE WORK TO DO \"#{inspect(test)}, #{inspect(state)}. #{inspect self()}\".")
 
     case Poison.decode(json) do
       {:ok, payload} ->
@@ -87,7 +85,7 @@ defmodule RicochetRobots.SocketHandler do
     Logger.debug("websocket_handle create_room with #{content}")
     room_name = Room.new( %{room_name: content} )
     
-    # Room.add_player(room_name, state.player_name)
+    Room.add_player(room_name, state.player_name)
 
     {:reply, {:text, "success"}, state}
   end
@@ -121,21 +119,22 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "new_game", %{room_name: room_name}}, state) do
     Logger.debug("[New game] remove log msg when it's working.")
 
-    case Game.fetch(room_name) do
-      {:ok, _game} ->
-        Game.new_round(room_name)
-        {:reply, {:text, "success"}, state}
+    {:reply, {:text, "failure"}, state}
+    # case Game.fetch(room_name) do
+    #   {:ok, _game} ->
+    #     Game.new_round(room_name)
+    #     {:reply, {:text, "success"}, state}
 
-      :error ->
-        case Game.new(room_name) do
-          :ok ->
-            Room.system_chat(room_name, "#{state.player.username} has started a new game!")
-            {:reply, {:text, "success"}, state}
+    #   :error ->
+    #     case Game.new(room_name) do
+    #       :ok ->
+    #         Room.system_chat(room_name, "#{state.player.username} has started a new game!")
+    #         {:reply, {:text, "success"}, state}
 
-          :error ->
-            {:reply, {:text, "failure"}, state}
-        end
-    end
+    #       :error ->
+    #         {:reply, {:text, "failure"}, state}
+    #     end
+    # end
   end
 
   # TODO: ONLY send board, goals, robots to the new user
@@ -155,10 +154,10 @@ defmodule RicochetRobots.SocketHandler do
 
     Room.broadcast_scoreboard(state.registry_key)
 
-    Game.broadcast_visual_board(state.registry_key)
-    Game.broadcast_robots(state.registry_key)
-    Game.broadcast_goals(state.registry_key)
-    Game.broadcast_clock(state.registry_key)
+    # Game.broadcast_visual_board(state.registry_key)
+    # Game.broadcast_robots(state.registry_key)
+    # Game.broadcast_goals(state.registry_key)
+    # Game.broadcast_clock(state.registry_key)
 
     # send out user initialization info to client
     response = Poison.encode!(%{content: state[:player], action: "update_user"})
@@ -216,8 +215,9 @@ defmodule RicochetRobots.SocketHandler do
   def websocket_handle({:json, "submit_movelist", content}, state) do
     Logger.debug("[Move] " <> state[:player].username <> " --> ")
 
-    new_robots = Game.move_robots(state.registry_key, content, state.player.unique_key)
-    response = Poison.encode!(%{content: new_robots, action: "update_robots"})
+    # new_robots = Game.move_robots(state.registry_key, content, state.player.unique_key)
+    response = "test"
+    # response = Poison.encode!(%{content: new_robots, action: "update_robots"})
     {:reply, {:text, response}, state}
   end
 

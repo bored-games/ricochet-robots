@@ -30,12 +30,12 @@ end
 
 
 
-defmodule RicochetRobots.Room do
+defmodule Gameboy.Room do
   @moduledoc """
   Defines a `Room`.
 
-  A `Room` is a GenServer that contains information about current players and can
-  have up to one `game` (`RicochetRobots.Game`) attached.
+  A `Room` is a GenServer that contains information about current players, chat, and can
+  have up to one `game` (`Gameboy.Game`) attached.
 
   TODO: Add more functions that we need:
   - Get chat history
@@ -58,13 +58,15 @@ defmodule RicochetRobots.Room do
   use GenServer
   require Logger
 
-  alias RicochetRobots.{Player, RoomSupervisor}
+  alias Gameboy.{Player, RoomSupervisor}
+  alias Gameboy.RicochetRobots.Main
 
   @default_player_limit 8
 
   defstruct name: nil,
             player_limit: @default_player_limit,
             players: %{},
+            game: nil,
             chat: ChatLog.new()
 
   @type t :: %{
@@ -77,6 +79,7 @@ defmodule RicochetRobots.Room do
               is_muted: boolean
             }
           },
+          game: String.t(),
           chat: ChatLog.t()
         }
 
@@ -84,8 +87,10 @@ defmodule RicochetRobots.Room do
     # So, I think this is only for the default room constructor used by RoomSupervisor
     
     room_name = Map.get(opts, :room_name, "TESTROOM")
-    Logger.debug("In Room.start_link with #{inspect(opts)}")
-    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
+    mytuple = via_tuple2(room_name)
+    Logger.debug("In Room.start_link with MY TUPLE #{inspect(mytuple)}")
+
+    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: mytuple)
   end
 
   @impl true
@@ -93,12 +98,14 @@ defmodule RicochetRobots.Room do
   def init(opts) do
     
     room_name = opts[:room_name]
-    Logger.info("Opened new room `#{room_name}`.")
 
     state = %__MODULE__{
       name: room_name,
       player_limit: Map.get(opts, :player_limit, @default_player_limit)
     }
+
+    Registry.register(Registry.RoomRegistry, room_name, self())
+    Logger.info("Opened new room `#{room_name}`.")
 
     {:ok, state}
   end
@@ -118,16 +125,16 @@ defmodule RicochetRobots.Room do
     room_name
   end
 
+
   def close(room_name) do
-    Logger.info("Attempting to close room.")
-    Logger.debug("Preparing for room close: kicking users from room.")
+    Logger.info("Preparing for room close: kicking users from room.")
 
     Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
       for {player_name, _socket} <- entries, do: remove_player(room_name, player_name)
     end)
 
     Logger.debug("Stopping Room, bye bye!")
-    GenServer.stop(via_tuple(room_name), :normal)
+    GenServer.stop(via_tuple2(room_name), :normal)
   end
 
   def broadcast_to_players(message, room_name) do
@@ -143,32 +150,49 @@ defmodule RicochetRobots.Room do
   def add_player(room_name, player_name) do
     Logger.info("[Room.add_player] #{player_name} to #{room_name}")
 
-    GenServer.call(via_tuple(room_name), {:add_player, player_name})
+    GenServer.call(via_tuple2(room_name), {:add_player, player_name})
+  end
+  
+  # Start a game...
+  @spec start_game(String.t(), String.t()) :: :ok | :error
+  def start_game(room_name, game_name) do
+    case game_name do
+      "robots" -> {:ok, Gameboy.RicochetRobots.Main.new(room_name)}
+      "yahtzee" -> {:ok, "yahtzee game"}
+      _ -> :error
+    end
+  end
+  
+  @spec add_game(String.t(), integer, String.t()) :: :ok | :error
+  def add_game(room_name, player_name, game_name) do
+    Logger.info("[Room.add_game] #{player_name} wants to start #{game_name} in #{room_name}")
+
+    GenServer.call(via_tuple2(room_name), {:add_game, player_name, game_name})
   end
 
   @spec remove_player(String.t(), integer) :: nil
   def remove_player(room_name, player_name) do
-    GenServer.call(via_tuple(room_name), {:remove_player, player_name})
+    GenServer.call(via_tuple2(room_name), {:remove_player, player_name})
   end
 
   @spec player_chat(String.t(), integer, String.t()) :: nil
   def player_chat(room_name, player_name, message) do
-    GenServer.cast(via_tuple(room_name), {:player_chat, player_name, message})
+    GenServer.cast(via_tuple2(room_name), {:player_chat, player_name, message})
   end
 
   @spec system_chat(String.t(), String.t()) :: nil
   def system_chat(room_name, message) do
-    GenServer.cast(via_tuple(room_name), {:system_chat, message})
+    GenServer.cast(via_tuple2(room_name), {:system_chat, message})
   end
 
   @spec system_chat_to_player(String.t(), integer, String.t()) :: nil
   def system_chat_to_player(room_name, player_name, message) do
-    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player_name, message})
+    GenServer.cast(via_tuple2(room_name), {:system_chat_to_player, player_name, message})
   end
 
   @spec broadcast_scoreboard(String.t()) :: nil
   def broadcast_scoreboard(room_name) do
-    GenServer.cast(via_tuple(room_name), :broadcast_scoreboard)
+    GenServer.cast(via_tuple2(room_name), :broadcast_scoreboard)
   end
 
   @doc """
@@ -177,26 +201,54 @@ defmodule RicochetRobots.Room do
   """
   @impl true
   def handle_call({:add_player, player_name}, _from, state) do
-    
-    Logger.info("HERE AT LAST")
 
+    Logger.debug("FIRST: #{inspect(state)}")
     if map_size(state.players) == state.player_limit do
-      Logger.debug("Room at player limit, rejecting player \"#{player_name}\".")
+      Logger.debug("Room at player limit (#{state.player_limit}), rejecting player \"#{player_name}\".")
       {:reply, :error, state}
     else
       # Make sure player really exists.
       case Player.fetch(player_name) do
         {:ok, player} ->
-          # Registry.register(Registry.RoomPlayerRegistry, player_name, player.socket)
+          
+          # TO DO: what if player is already in room?
+          # Registry.register(Registry.RoomPlayerRegistry, player_name, player.socket_pid)
 
           Logger.info("Player \"#{player.name}\" joined.")
-          # system_chat(state.name, "#{player.name} joined the room.")
+          system_chat(state.name, "#{player.name} joined the room.")
 
-          # state = %__MODULE__{state | players: MapSet.put(state.players, player.name)}
+          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{score: 0, is_admin: false, is_muted: false})}
           {:reply, :ok, state}
 
         :error ->
           Logger.debug("Player \"#{player_name}\" does not exist, did not add to room.")
+          {:reply, :error, state}
+      end
+    end
+  end
+  
+  @doc """
+  Add a game to a room. Check if player has the proper authority and if a game already exists.
+  """
+  @impl true
+  def handle_call({:add_game, player_name, game_name}, _from, state) do
+    if state.game do
+      Logger.debug("Finish your current game first!")
+      {:reply, :error, state}
+    else
+      # Make sure game really exists.
+      case start_game(state.name, game_name) do
+        {:ok, game} ->
+
+          Logger.info("Player \"#{player_name}\" has begun a game of #{game_name} in `#{state.name}`.")
+          # system_chat(state.name, "#{player.name} has begun a game of...")
+          Logger.info("AND THE GAME WAS: #{inspect game}")
+          state = %__MODULE__{state | game: game}
+          
+          {:reply, :ok, state}
+
+        :error ->
+          Logger.debug("Game \"#{game_name}\" does not exist, did not add to room `#{state.name}`.")
           {:reply, :error, state}
       end
     end
@@ -267,10 +319,12 @@ defmodule RicochetRobots.Room do
         content: %{
           room: state.name,
           message: chat_message,
-          timestamp: :calendar.universal_time()
+         # timestamp: :calendar.universal_time(), # doesn't encode with poison...
+          timestamp: DateTime.utc_now()
         }
       })
 
+    Logger.debug("[room] msg #{inspect message}")
     broadcast_to_players(message, state.name)
 
     state = %__MODULE__{state | chat: ChatLog.log(state.chat, message)}
@@ -306,12 +360,19 @@ defmodule RicochetRobots.Room do
   """
   @impl true
   def handle_cast(:broadcast_scoreboard, state) do
-    Poison.encode!(%{content: state.players, action: "update_scoreboard"})
+    Logger.debug("[#{inspect state.name}] Broadcast scoreboard")
+
+    Poison.encode!(%{action: "update_scoreboard", content: state.players})
     |> broadcast_to_players(state.name)
 
     {:noreply, state}
   end
 
+  defp via_tuple2(room_name) do
+    {:via, Registry, {Registry.RoomRegistry, room_name}}
+  end
+
+  # UNUSED LOL:
   defp via_tuple(room_name) do
     {:via, Registry.RoomRegistry, {:room_name, room_name}}
   end

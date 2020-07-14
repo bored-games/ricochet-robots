@@ -1,4 +1,4 @@
-defmodule RicochetRobots.PlayerSupervisor do
+defmodule Gameboy.PlayerSupervisor do
   @moduledoc false
 
   use Supervisor
@@ -17,8 +17,8 @@ defmodule RicochetRobots.PlayerSupervisor do
 
     children = [
       %{
-        id: RicochetRobots.Player,
-        start: {RicochetRobots.Player, :start_link, [opts]}
+        id: Gameboy.Player,
+        start: {Gameboy.Player, :start_link, [opts]}
       }
     ]
     

@@ -1,4 +1,4 @@
-defmodule RicochetRobots do
+defmodule Gameboy do
   @moduledoc """
   A multiplayer server for the popular board game *Ricochet Robots*.
   """
@@ -7,7 +7,7 @@ defmodule RicochetRobots do
     children = [
       Plug.Cowboy.child_spec(
         scheme: :http,
-        plug: RicochetRobots.Router,
+        plug: Gameboy.Router,
         options: [
           dispatch: dispatch(),
           port: 4000
@@ -24,10 +24,14 @@ defmodule RicochetRobots do
       Registry.child_spec(
         keys: :unique,
         name: Registry.PlayerRegistry
+      ),
+      Registry.child_spec(
+        keys: :unique,
+        name: Registry.RoomPlayerRegistry
       )
     ]
 
-    opts = [strategy: :one_for_one, name: RicochetRobots.Application]
+    opts = [strategy: :one_for_one, name: Gameboy.Application]
     Supervisor.start_link(children, opts)
   end
 
@@ -36,8 +40,8 @@ defmodule RicochetRobots do
       {
         :_,
         [
-          {"/ws/[...]", RicochetRobots.SocketHandler, []},
-          {:_, Plug.Cowboy.Handler, {RicochetRobots.Router, []}}
+          {"/ws/[...]", Gameboy.SocketHandler, []},
+          {:_, Plug.Cowboy.Handler, {Gameboy.Router, []}}
         ]
       }
     ]

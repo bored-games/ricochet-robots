@@ -1,4 +1,4 @@
-defmodule RicochetRobots.Router do
+defmodule Gameboy.Router do
   @moduledoc false
 
   use Plug.Router

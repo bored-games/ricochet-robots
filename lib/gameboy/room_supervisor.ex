@@ -1,4 +1,4 @@
-defmodule RicochetRobots.RoomSupervisor do
+defmodule Gameboy.RoomSupervisor do
   @moduledoc false
 
   use Supervisor
@@ -17,13 +17,9 @@ defmodule RicochetRobots.RoomSupervisor do
 
     children = [
       %{
-        id: RicochetRobots.Room,
-        start: {RicochetRobots.Room, :start_link, [opts]}
-      },
-      # Registry.child_spec(
-      #   keys: :unique,
-      #   name: Registry.RoomPlayerRegistry
-      # )
+        id: Gameboy.Room,
+        start: {Gameboy.Room, :start_link, [opts]}
+      }
     ]
     
     Supervisor.init(children, strategy: :one_for_one)

@@ -1,16 +1,15 @@
-defmodule RicochetRobots.GameLogic do
+defmodule Gameboy.RicochetRobots.GameLogic do
   @moduledoc """
   This module contains functions that handle game logic.
   """
 
   import Bitwise
-
-  alias RicochetRobots.{Game}
+  alias Gameboy.RicochetRobots.{Main}
 
   @doc """
   Return whether the robot that matches the goal color is at the active goal.
   """
-  @spec check_solution([Game.robot_t()], [Game.goal_t()]) :: boolean()
+  @spec check_solution([Main.robot_t()], [Main.goal_t()]) :: boolean()
   def check_solution(robots, goals) do
     %{symbol: active_symbol, pos: active_pos} = Enum.find(goals, fn %{active: a} -> a end)
 
@@ -153,7 +152,7 @@ defmodule RicochetRobots.GameLogic do
   end
 
   @doc "Return 5 robots in unique, random positions, avoiding the center 4 squares."
-  @spec populate_robots() :: [Game.robot_t()]
+  @spec populate_robots() :: [Main.robot_t()]
   def populate_robots() do
     []
     |> add_robot("red")
@@ -164,7 +163,7 @@ defmodule RicochetRobots.GameLogic do
   end
 
   # Given color, list of previous robots, add a single 'color' robot to an unoccupied square
-  @spec add_robot([Game.robot_t()], String.t()) :: [Game.robot_t()]
+  @spec add_robot([Main.robot_t()], String.t()) :: [Main.robot_t()]
   defp add_robot(robots, color) do
     robot = %{pos: rand_position(robots), color: color, moves: ["up", "left", "down", "right"]}
     [robot | robots]
@@ -173,7 +172,7 @@ defmodule RicochetRobots.GameLogic do
   @open_indices Enum.to_list(0..15) -- [7, 8]
 
   # Given a list of occupied positions, choose a new position.
-  @spec rand_position([Game.position_t()]) :: [Game.position_t()]
+  @spec rand_position([Main.position_t()]) :: [Main.position_t()]
   defp rand_position(robots) do
     occupied = for(robot <- robots, do: robot.pos) |> Enum.to_list()
 
@@ -186,9 +185,9 @@ defmodule RicochetRobots.GameLogic do
   @doc """
   Return a randomized boundary board, its visual map, and corresponding goal positions.
   """
-  @spec populate_board() :: {map, map, [Game.goal_t()]}
+  @spec populate_board() :: {map, map, [Main.goal_t()]}
   def populate_board() do
-    goal_symbols = Game.goal_symbols() |> Enum.shuffle()
+    goal_symbols = Main.goal_symbols() |> Enum.shuffle()
 
     goal_active =
       Enum.shuffle([
@@ -214,10 +213,30 @@ defmodule RicochetRobots.GameLogic do
     open = for c <- 1..31, into: %{0 => 1, 32 => 1}, do: {c, 0}
     a = for r <- 1..31, into: %{0 => solid, 32 => solid}, do: {r, open}
 
-    a =
-      for i <- [14, 18], j <- 14..18 do
-        put_in(a[i][j], 1) |> put_in(a[j][i], 1)
-      end
+    # a =
+    #   for i <- [14, 18], j <- 14..18 do
+    #     put_in(a[i][j], 1)
+    #     put_in(a[j][i], 1)
+    #   end
+
+    a = put_in(a[14][14], 1)
+    a = put_in(a[14][15], 1)
+    a = put_in(a[14][16], 1)
+    a = put_in(a[14][17], 1)
+    a = put_in(a[14][18], 1)
+    a = put_in(a[15][14], 1)
+    a = put_in(a[16][14], 1)
+    a = put_in(a[17][14], 1)
+    a = put_in(a[18][14], 1)
+    a = put_in(a[18][15], 1)
+    a = put_in(a[18][16], 1)
+    a = put_in(a[18][17], 1)
+    a = put_in(a[14][18], 1)
+    a = put_in(a[15][18], 1)
+    a = put_in(a[16][18], 1)
+    a = put_in(a[17][18], 1)
+    a = put_in(a[18][18], 1)
+
 
     # two | per board edge, with certain spaces avoided
     v1 = Enum.random([4, 6, 8, 10, 12, 14])
@@ -442,8 +461,8 @@ defmodule RicochetRobots.GameLogic do
   end
 
   # Add L
-  @spec add_L1(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
-          {map, [Game.goal_t()]}
+  @spec add_L1(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
+          {map, [Main.goal_t()]}
   defp add_L1(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col + 1], 1)
@@ -457,8 +476,8 @@ defmodule RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 90 deg CW
-  @spec add_L2(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
-          {map, [Game.goal_t()]}
+  @spec add_L2(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
+          {map, [Main.goal_t()]}
   defp add_L2(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col + 1], 1)
@@ -472,8 +491,8 @@ defmodule RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 180 deg
-  @spec add_L3(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
-          {map, [Game.goal_t()]}
+  @spec add_L3(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
+          {map, [Main.goal_t()]}
   defp add_L3(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
@@ -487,8 +506,8 @@ defmodule RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 270 deg CW
-  @spec add_L4(map, {integer, integer}, String.t(), boolean, [Game.goal_t()]) ::
-          {map, [Game.goal_t()]}
+  @spec add_L4(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
+          {map, [Main.goal_t()]}
   defp add_L4(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
