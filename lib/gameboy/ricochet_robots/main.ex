@@ -58,14 +58,14 @@ defmodule Gameboy.RicochetRobots.Main do
   @typedoc "Position: { row: Integer, col: Integer }"
   @type position_t :: %{x: integer, y: integer}
 
-  @typedoc "Robot: { pos: position, color: String }"
-  @type robot_t :: %{pos: position_t, color: String.t(), moves: [String.t()]}
-
   @typedoc "Goal: { pos: position, symbol: String, active: boolean }"
   @type goal_t :: %{pos: position_t, symbol: String.t(), active: boolean}
 
   @typedoc "Move"
   @type move_t :: %{color: String.t(), direction: String.t()}
+
+  @typedoc "Robot: { pos: position, color: String, moves: [move] }"
+  @type robot_t :: %{pos: position_t, color: String.t(), moves: [move_t]}
 
   @goal_symbols [
     "RedMoon",
@@ -95,7 +95,7 @@ defmodule Gameboy.RicochetRobots.Main do
   @impl true
   @spec init(%{room_name: pid()}) :: {:ok, %__MODULE__{}}
   def init(%{room_name: room_name} = _opts) do
-    Logger.info("Started new game for room \"#{room_name}\".")
+    Logger.info("[[Ricochet Robots]] Started for [#{room_name}].")
     {visual_board, boundary_board, goals} = GameLogic.populate_board()
     robots = GameLogic.populate_robots()
 
@@ -106,6 +106,7 @@ defmodule Gameboy.RicochetRobots.Main do
       goals: goals,
       robots: robots
     }
+    
 
     :timer.send_interval(5000, :timerevent)
 
@@ -119,8 +120,8 @@ defmodule Gameboy.RicochetRobots.Main do
   """
   @spec new(room_name: String.t()) :: nil
   def new(room_name) do
-    Logger.debug("[Ricochet Robots: New game] started in `#{room_name}`")
     GameSupervisor.start_link(%{room_name: room_name})
+
     # Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
 
     # broadcast_new_game(room_name)
@@ -135,19 +136,23 @@ defmodule Gameboy.RicochetRobots.Main do
     GenServer.cast(via_tuple(room_name), :new_round)
   end
 
-  
-  @spec fetch2(String.t()) :: {:ok, String.t()} | :error
-  def fetch2(game_name) do
-      {:ok, game_name}
-  end
-
-
+# GAME?
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
-  def fetch(room_name) do
-    case GenServer.call(via_tuple(room_name), :get_state) do
-      {:ok, game} -> {:ok, game}
-      _ -> :error
-    end
+  def fetch(game_name) do
+    
+    Logger.debug("There are now THIS MANY GAMES: #{inspect(Registry.count(Registry.GameRegistry))}.")
+    Logger.debug("Time to look up the game #{inspect( via_tuple(game_name) )}")
+    case GenServer.whereis(via_tuple(game_name)) do
+      nil -> :error
+
+      _proc -> 
+        Logger.debug("looking for #{inspect( via_tuple(game_name) )}")
+        case GenServer.call(via_tuple(game_name), :get_state) do
+          {:ok, game} -> {:ok, game}
+          _ -> :error
+        end
+      end
+
   end
 
   def broadcast_new_game(room_name) do
@@ -156,19 +161,20 @@ defmodule Gameboy.RicochetRobots.Main do
   end
 
   def broadcast_visual_board(room_name) do
-    state = fetch(room_name)
+    {:ok, state} = fetch(room_name)
+
     message = Poison.encode!(%{action: "update_board", content: state.visual_board})
     GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
   end
 
   def broadcast_robots(room_name) do
-    state = fetch(room_name)
+    {:ok, state} = fetch(room_name)
     message = Poison.encode!(%{action: "update_robots", content: state.robots})
     GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
   end
 
   def broadcast_goals(room_name) do
-    state = fetch(room_name)
+    {:ok, state} = fetch(room_name)
     message = Poison.encode!(%{action: "update_goals", content: state.goals})
     GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
   end
@@ -184,7 +190,7 @@ defmodule Gameboy.RicochetRobots.Main do
   handle ticking the timer.
   """
   def broadcast_clock(room_name) do
-    state = fetch(room_name)
+    {:ok, state} = fetch(room_name)
 
     message =
       Poison.encode!(%{
@@ -258,15 +264,25 @@ defmodule Gameboy.RicochetRobots.Main do
   """
   @spec move_robots(String.t(), String.t(), [move_t]) :: [robot_t]
   def move_robots(room_name, player_name, moves) do
-    state = fetch(room_name)
+    {:ok, state} = fetch(room_name)
 
-    if GameLogic.check_solution(moves, state.goals) do
-      GenServer.call(via_tuple(room_name), {:solution_found, moves, player_name})
-      broadcast_clock(room_name)
-      state.robots
-    else
-      GameLogic.make_move(state.robots, state.boundary_board, moves)
-    end
+    Logger.debug("Its my job to do #{inspect moves}")
+    # if GameLogic.check_solution(moves, state.goals) do
+    #   GenServer.call(via_tuple(room_name), {:solution_found, moves, player_name})
+    #   broadcast_clock(room_name)
+    #   state.robots
+    # else
+    #   GameLogic.make_move(state.robots, state.boundary_board, moves)
+    # end
+
+    
+    test = GameLogic.make_move(state.robots, state.boundary_board, moves)
+
+    Logger.debug("FINISHED MAKE MOVES. DELETE")
+
+    test
+
+    
   end
 
 
@@ -275,7 +291,7 @@ defmodule Gameboy.RicochetRobots.Main do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
+    {:reply, {:ok, state}, state}
   end
 
 
@@ -357,12 +373,10 @@ defmodule Gameboy.RicochetRobots.Main do
     # TODO: some kind of display!!!
   end
 
-  
-  defp via_tuple(player_name) do
-    {:via, Registry, {Registry.GameRegistry, player_name}}
+  defp via_tuple(room_name) do
+    {:via, Registry, {Registry.GameRegistry, room_name}}
     # {:via, Registry.GameRegistry, {__MODULE__, room_name}}
   end
-  
 
   
 end

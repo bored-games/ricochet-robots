@@ -112,7 +112,7 @@ defmodule Gameboy.Player do
     
     player_name = Map.get(opts, :player_name, "PLAYANAME")
 
-    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple2(player_name))
+    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
 
   end
 
@@ -146,12 +146,11 @@ defmodule Gameboy.Player do
   def fetch(player_name) do
     Logger.debug("The PlayerRegister has: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
     
-    case GenServer.whereis(via_tuple2(player_name)) do
+    case GenServer.whereis(via_tuple(player_name)) do
       nil -> :error
 
       proc -> 
-        Logger.debug("looking for #{inspect( via_tuple2(player_name) )}")
-        case GenServer.call(via_tuple2(player_name), :get_state) do
+        case GenServer.call(via_tuple(player_name), :get_state) do
           {:ok, player} -> {:ok, player}
           _ -> :error
         end
@@ -160,19 +159,14 @@ defmodule Gameboy.Player do
 
   @impl true
   def handle_call(:get_state, _from, state) do
-    Logger.debug("do whatever you want")
     {:reply, {:ok, state}, state}
   end
 
-  defp via_tuple2(player_name) do
+  defp via_tuple(player_name) do
     {:via, Registry, {Registry.PlayerRegistry, player_name}}
     # {:via, Registry.PlayerRegistry, {:player_name, player_name}}
   end
   
-  defp via_tuple_old(player_name) do
-    # {:via, Registry.PlayerRegistry, player_name}
-    {:via, Registry.PlayerRegistryXXX, player_name}
-  end
 
   # Return a new nickname. We generate a nickname by combining 3 words from 3
   # word lists.
@@ -187,6 +181,14 @@ defmodule Gameboy.Player do
       [] -> player_name
     end
   end
+
+  
+  # Returns a JSON encodable map.
+ # @spec to_map(__MODULE__.t()) :: %{username: String.t(), color: String.t(), score: int, is_admin: bool, is_muted: bool}
+  def to_map(player, score, is_admin, is_muted) do
+    %{ username: player.name, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted }
+  end
+
 
   # Return a random color from a defined list.
   @spec generate_color() :: String.t()

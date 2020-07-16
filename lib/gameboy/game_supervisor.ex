@@ -13,7 +13,6 @@ defmodule Gameboy.GameSupervisor do
   #def init(reg_key) do
   def init(opts) do
 
-    Logger.debug("I think we're doing something with #{inspect opts}")
     children = [
       # THIS SHOULD NOT BE HARDCODED someday
       %{

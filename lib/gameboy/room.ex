@@ -75,6 +75,7 @@ defmodule Gameboy.Room do
           players: %{
             required(String.t()) => %{
               score: integer,
+              color: String.t(),
               is_admin: boolean,
               is_muted: boolean
             }
@@ -84,17 +85,16 @@ defmodule Gameboy.Room do
         }
 
   def start_link(opts) do
-    # So, I think this is only for the default room constructor used by RoomSupervisor
     
-    room_name = Map.get(opts, :room_name, "TESTROOM")
-    mytuple = via_tuple2(room_name)
+    room_name = Map.get(opts, :room_name)
+    mytuple = via_tuple(room_name)
     Logger.debug("In Room.start_link with MY TUPLE #{inspect(mytuple)}")
 
     {:ok, _} = GenServer.start_link(__MODULE__, opts, name: mytuple)
   end
 
   @impl true
-  @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
+  # @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
   def init(opts) do
     
     room_name = opts[:room_name]
@@ -104,8 +104,15 @@ defmodule Gameboy.Room do
       player_limit: Map.get(opts, :player_limit, @default_player_limit)
     }
 
-    Registry.register(Registry.RoomRegistry, room_name, self())
+    
     Logger.info("Opened new room `#{room_name}`.")
+
+    
+    case opts[:start_game] do
+      "robots" -> start_game(room_name, "robots")
+      _ -> Logger.info("do nothing")
+    end
+
 
     {:ok, state}
   end
@@ -130,27 +137,26 @@ defmodule Gameboy.Room do
     Logger.info("Preparing for room close: kicking users from room.")
 
     Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
-      for {player_name, _socket} <- entries, do: remove_player(room_name, player_name)
+      for {pid, player_name} <- entries, do: remove_player(room_name, player_name) # TO DO
     end)
 
     Logger.debug("Stopping Room, bye bye!")
-    GenServer.stop(via_tuple2(room_name), :normal)
+    GenServer.stop(via_tuple(room_name), :normal)
   end
 
   def broadcast_to_players(message, room_name) do
+    Logger.debug("BROADCAST TO #{inspect Registry.count(Registry.RoomPlayerRegistry)} in #{room_name}...")
     Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
-      for {_, socket} <- entries, do: Process.send(socket, message, [])
+      for {pid, _player_name} <- entries, do: Process.send(pid, {:send_json, message}, [])
     end)
   end
 
-  # Some wrappers for common GenServer calls. If we ever need to take advantage
-  # of the `from` parameter in the GenServer callback, bypass these wrappers.
-
+  # Add player to room.
   @spec add_player(String.t(), integer) :: :ok | :error
   def add_player(room_name, player_name) do
     Logger.info("[Room.add_player] #{player_name} to #{room_name}")
 
-    GenServer.call(via_tuple2(room_name), {:add_player, player_name})
+    GenServer.call(via_tuple(room_name), {:add_player, player_name})
   end
   
   # Start a game...
@@ -167,32 +173,37 @@ defmodule Gameboy.Room do
   def add_game(room_name, player_name, game_name) do
     Logger.info("[Room.add_game] #{player_name} wants to start #{game_name} in #{room_name}")
 
-    GenServer.call(via_tuple2(room_name), {:add_game, player_name, game_name})
+    GenServer.call(via_tuple(room_name), {:add_game, player_name, game_name})
   end
 
   @spec remove_player(String.t(), integer) :: nil
   def remove_player(room_name, player_name) do
-    GenServer.call(via_tuple2(room_name), {:remove_player, player_name})
+    GenServer.call(via_tuple(room_name), {:remove_player, player_name})
   end
 
   @spec player_chat(String.t(), integer, String.t()) :: nil
   def player_chat(room_name, player_name, message) do
-    GenServer.cast(via_tuple2(room_name), {:player_chat, player_name, message})
+    GenServer.cast(via_tuple(room_name), {:player_chat, player_name, message})
   end
 
   @spec system_chat(String.t(), String.t()) :: nil
   def system_chat(room_name, message) do
-    GenServer.cast(via_tuple2(room_name), {:system_chat, message})
+    GenServer.cast(via_tuple(room_name), {:system_chat, message})
   end
 
   @spec system_chat_to_player(String.t(), integer, String.t()) :: nil
   def system_chat_to_player(room_name, player_name, message) do
-    GenServer.cast(via_tuple2(room_name), {:system_chat_to_player, player_name, message})
+    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player_name, message})
   end
 
   @spec broadcast_scoreboard(String.t()) :: nil
   def broadcast_scoreboard(room_name) do
-    GenServer.cast(via_tuple2(room_name), :broadcast_scoreboard)
+    GenServer.cast(via_tuple(room_name), :broadcast_scoreboard)
+  end
+
+  @spec broadcast_game_info(String.t(), String.t()) :: nil
+  def broadcast_game_info(room_name, message) do
+    GenServer.cast(via_tuple(room_name), {:broadcast_game_info, message})
   end
 
   @doc """
@@ -202,7 +213,6 @@ defmodule Gameboy.Room do
   @impl true
   def handle_call({:add_player, player_name}, _from, state) do
 
-    Logger.debug("FIRST: #{inspect(state)}")
     if map_size(state.players) == state.player_limit do
       Logger.debug("Room at player limit (#{state.player_limit}), rejecting player \"#{player_name}\".")
       {:reply, :error, state}
@@ -212,12 +222,11 @@ defmodule Gameboy.Room do
         {:ok, player} ->
           
           # TO DO: what if player is already in room?
-          # Registry.register(Registry.RoomPlayerRegistry, player_name, player.socket_pid)
 
-          Logger.info("Player \"#{player.name}\" joined.")
+          Logger.info("[#{state.name} (/#{state.player_limit})] Player \"#{player.name}\" joined.")
           system_chat(state.name, "#{player.name} joined the room.")
 
-          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{score: 0, is_admin: false, is_muted: false})}
+          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{score: 0, color: player.color, is_admin: false, is_muted: false})} # TO DO!!!
           {:reply, :ok, state}
 
         :error ->
@@ -285,15 +294,16 @@ defmodule Gameboy.Room do
   @impl true
   def handle_cast({:player_chat, player_name, chat_message}, state) do
     case Player.fetch(player_name) do
-      {:ok, _} ->
+      {:ok, player} ->
         message =
           Poison.encode!(%{
             action: "player_chat_new_message",
             content: %{
-              room: state.name,
-              player_name: player_name,
+              room_name: state.name,
+              user: Player.to_map(player, 0, false, false),
               message: chat_message,
-              timestamp: :calendar.universal_time()
+              # timestamp: :calendar.universal_time(), # doesn't encode with poison...
+               timestamp: DateTime.utc_now()
             }
           })
 
@@ -324,7 +334,7 @@ defmodule Gameboy.Room do
         }
       })
 
-    Logger.debug("[room] msg #{inspect message}")
+    Logger.debug("[#{state.name}] System chat: #{inspect chat_message}")
     broadcast_to_players(message, state.name)
 
     state = %__MODULE__{state | chat: ChatLog.log(state.chat, message)}
@@ -343,7 +353,8 @@ defmodule Gameboy.Room do
         content: %{
           room: state.name,
           message: chat_message,
-          timestamp: :calendar.universal_time()
+          # timestamp: :calendar.universal_time(), # doesn't encode with poison...
+           timestamp: DateTime.utc_now()
         }
       })
 
@@ -360,7 +371,7 @@ defmodule Gameboy.Room do
   """
   @impl true
   def handle_cast(:broadcast_scoreboard, state) do
-    Logger.debug("[#{inspect state.name}] Broadcast scoreboard")
+    Logger.debug("[#{inspect state.name}] Broadcast scoreboard of #{inspect state.players}")
 
     Poison.encode!(%{action: "update_scoreboard", content: state.players})
     |> broadcast_to_players(state.name)
@@ -368,13 +379,21 @@ defmodule Gameboy.Room do
     {:noreply, state}
   end
 
-  defp via_tuple2(room_name) do
-    {:via, Registry, {Registry.RoomRegistry, room_name}}
+  
+  @doc """
+  Broadcast info sent from a Game.
+  """
+  @impl true
+  def handle_cast({:broadcast_game_info, message}, state) do
+    Logger.debug("[#{inspect state.name}] Broadcast game_info #{inspect message} of #{inspect state.players}")
+
+    message |> broadcast_to_players(state.name)
+
+    {:noreply, state}
   end
 
-  # UNUSED LOL:
   defp via_tuple(room_name) do
-    {:via, Registry.RoomRegistry, {:room_name, room_name}}
+    {:via, Registry, {Registry.RoomRegistry, room_name}}
   end
 
   @spec generate_name() :: String.t()
