@@ -106,12 +106,8 @@ defmodule Gameboy.Player do
     "#e0e0e0"
   ]
 
-  def start_link(opts) do
-    
-    Logger.debug("In Player.start_link with #{inspect(opts.player_name)}")
-    
-    player_name = Map.get(opts, :player_name, "PLAYANAME")
-
+  def start_link(opts) do   
+    {:ok, player_name} = Map.fetch(opts, :player_name)
     {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
 
   end
@@ -122,6 +118,7 @@ defmodule Gameboy.Player do
     
     state = %__MODULE__{
       name: player_name,
+      nickname: player_name,
       color: generate_color(),
       socket_pid: socket_pid
     }
@@ -144,12 +141,12 @@ defmodule Gameboy.Player do
 
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(player_name) do
-    Logger.debug("The PlayerRegister has: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
+    # Logger.debug("The PlayerRegister has: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
     
     case GenServer.whereis(via_tuple(player_name)) do
       nil -> :error
 
-      proc -> 
+      _proc -> 
         case GenServer.call(via_tuple(player_name), :get_state) do
           {:ok, player} -> {:ok, player}
           _ -> :error
@@ -157,14 +154,45 @@ defmodule Gameboy.Player do
       end
   end
 
+
+  # @spec update(String.t(), ) :: String.t()
+  def update(player_name, new_info) do
+    
+    # {:ok, player} = Player.fetch(player_name)
+
+    GenServer.call(via_tuple(player_name), {:update_player, new_info})
+  end
+  
+
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, {:ok, state}, state}
   end
 
+  @impl true
+  def handle_call({:update_player, new_info}, _from, state) do
+   
+    new_username =
+      if String.trim(new_info["nickname"]) != "" do
+        String.slice(String.trim(new_info["nickname"]), 0, 16)
+      else
+        state.nickname
+      end
+  
+    new_color =
+      if String.trim(new_info["color"]) != "" do
+        String.trim(new_info["color"])
+      else
+        state.color
+      end
+
+    state = %{ state | nickname: new_username, color: new_color }
+
+    {:reply, {:ok, state}, state}
+  end
+
   defp via_tuple(player_name) do
     {:via, Registry, {Registry.PlayerRegistry, player_name}}
-    # {:via, Registry.PlayerRegistry, {:player_name, player_name}}
   end
   
 
@@ -186,7 +214,7 @@ defmodule Gameboy.Player do
   # Returns a JSON encodable map.
  # @spec to_map(__MODULE__.t()) :: %{username: String.t(), color: String.t(), score: int, is_admin: bool, is_muted: bool}
   def to_map(player, score, is_admin, is_muted) do
-    %{ username: player.name, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted }
+    %{ username: player.name, nickname: player.nickname, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted }
   end
 
 

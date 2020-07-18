@@ -26,7 +26,6 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   by the robots.
   """
   def make_move(robots, board, []) do
-    Logger.debug("NO MORE MOVES")
     Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end)
   end
   
@@ -35,8 +34,6 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     
     move = move |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
 
-    Logger.debug("OK: #{inspect robots} Make Move #{inspect move}")
-    
     robots
     |> Enum.map(fn robot ->
       if robot.color == move.color do
@@ -74,11 +71,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   defp calculate_new_pos(pos, direction, robots, board) do
     dir = String.to_atom(direction)
 
-    new_coord =
-      [get_wall_blocked_indices(pos, dir, board) | get_robot_blocked_indices(pos, dir, robots)]
-
-    Logger.debug("new coordxzxxxxxxxxxxxxx: #{inspect new_coord} ")
-
+    new_coord = [get_wall_blocked_indices(pos, dir, board) | get_robot_blocked_indices(pos, dir, robots)]
 
     cond do
       dir == :up    -> %{pos | y: round(Enum.max(new_coord))}
@@ -99,7 +92,6 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     %{x: board_x, y: board_y} = %{y: 2 * robot_y + 1, x: round(2 * robot_x + 1)}
     robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
 
-    Logger.debug("THE NEW ROBOT CALC IS #{inspect(robot)}")
     # moves =
     #   [
     #     {%{x: robot_x - 1, y: robot_y}, board[board_y][board_x - 1], "left"},
@@ -119,8 +111,6 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     move_down  = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y+1}) || board[board_y+1][board_x] == 1) do nil else "down" end
     moves = Enum.filter([move_left, move_right, move_up, move_down], & !is_nil(&1))
 
-
-    Logger.debug("THE NEW ROBOT CALC IS #{inspect( %{robot | moves: moves})}")
     %{robot | moves: moves}
   end
 

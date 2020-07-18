@@ -8,7 +8,7 @@ defmodule Gameboy.SocketHandler do
 
   require Logger
   alias Gameboy.{Player, Room}
-  alias Gameboy.RicochetRobots.Main
+  alias Gameboy.RicochetRobots.Main, as: RicochetRobots
 
   defstruct player_name: nil
 
@@ -19,22 +19,24 @@ defmodule Gameboy.SocketHandler do
   @behaviour :cowboy_websocket
   @idle_timeout 90_000
 
+  @doc """
+  The first thing to happen for a new websocket connection.
+  """
   @impl true
   def init(request, state) do
-
-    
-
-    Logger.info("New websocket connection initiated by \"#{inspect(state)}\".")
+    Logger.info("New websocket connection initiated.")
     {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
   end
 
+  @doc """
+  Happens after init()
+  """
   @impl true
   def websocket_init(_state) do
     
     state = %__MODULE__{
       player_name: Player.new(self())
     }
-    Logger.debug("websocket_init complete: \"#{inspect(state)}\".")
 
     {:ok, state}
   end
@@ -103,20 +105,11 @@ defmodule Gameboy.SocketHandler do
   """
   @impl true
   def websocket_handle({:json, "join_room", room_name}, state) do
-    Logger.debug("Attempting to add player \"#{state.player_name}\" to room \"#{room_name}\".")
-
     case Room.add_player(room_name, state.player_name) do
       :ok -> 
-        
         Registry.register(Registry.RoomPlayerRegistry, room_name, state.player_name)
-        
-        Room.broadcast_scoreboard(room_name)
-        Gameboy.RicochetRobots.Main.broadcast_visual_board(room_name)
-        Gameboy.RicochetRobots.Main.broadcast_robots(room_name)
-        Gameboy.RicochetRobots.Main.broadcast_goals(room_name)
-        Gameboy.RicochetRobots.Main.broadcast_clock(room_name)
+        Room.welcome_player(room_name, state.player_name)
 
-      
         response = Poison.encode!(%{action: "connect_to_server", content: room_name})
         {:reply, {:text, response}, state}
 
@@ -159,30 +152,13 @@ defmodule Gameboy.SocketHandler do
     # end
   end
 
-  #what the heck is this now
+  #what the heck is this for now
   @doc "get_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
   @impl true
-  def websocket_handle({:json, "get_user", _content}, state) do
-    Logger.debug("[Get user]: " <> state.player_name)
-
-    # seperate message for client that just joined
-    # Room.system_chat(state.registry_key, "#{state.player.username} has joined the game.")
-
-    # Room.system_chat_to_player(
-    #   state.registry_key,
-    #   state[:player].username,
-    #   "Welcome to Ricochet Robots, #{state[:player].username}!"
-    # )
-
-    # Room.broadcast_scoreboard("Default Room")
-
-    # Game.broadcast_visual_board(state.registry_key)
-    # Game.broadcast_robots(state.registry_key)
-    # Game.broadcast_goals(state.registry_key)
-    # Game.broadcast_clock(state.registry_key)
-
-    # send out user initialization info to client
-    response = Poison.encode!(%{action: "update_user", content: %{username: "AUser", color: "#faefa0", score: 5, is_admin: true, is_muted: false}})
+  def websocket_handle({:json, "get_user", room_name}, state) do
+    {:ok, user_map} = Room.get_player(room_name, state.player_name)
+    
+    response = Poison.encode!(%{action: "update_user", content: user_map})
     {:reply, {:text, response}, state}
   end
 
@@ -206,12 +182,12 @@ defmodule Gameboy.SocketHandler do
     Logger.debug("[Room chat] remove log msg when it's working.")
 
     #To do: update chat probably needs to take the room name as an argument, and later, check if the user is even in the room. 
-    {:ok, player} = Player.fetch(state.player_name)
+   #  {:ok, player} = Player.fetch(state.player_name)
     
-    # Logger.debug("OPPPPPPPPPPPPPPPPPPPPPPPPP #{inspect content["room_name"]} #{inspect content["message"]}")
-    unless player.is_muted do
+    
+    #unless player.is_muted do
       Room.player_chat(content["room_name"], state.player_name, content["message"])
-    end
+    #end
 
     {:reply, {:text, "success"}, state}
   end
@@ -220,34 +196,19 @@ defmodule Gameboy.SocketHandler do
   @doc "update_user : need to send validated user info to 1 client and new scoreboard to all"
   @impl true
   def websocket_handle({:json, "update_user", content}, state) do
-    Logger.debug("[Update user] " <> state[:player].username <> " --> " <> content["username"])
+    Logger.debug("[Update Player] #{state.player_name} --> #{inspect content}")
 
-    old_user = state[:player]
-
-    new_username =
-      if String.trim(content["username"]) != "" do
-        String.slice(String.trim(content["username"]), 0, 16)
-      else
-        old_user.username
-      end
-
-    new_color =
-      if String.trim(content["color"]) != "" do
-        String.trim(content["color"])
-      else
-        old_user.color
-      end
-
-    new_user = %{old_user | username: new_username, color: new_color}
-    new_state = %{state | player: new_user}
+    Player.update(state.player_name, content)
 
     # send scoreboard to all
-    # TODO ######################### Player.update(new_user)
-    Room.broadcast_scoreboard(state.registry_key)
+    Room.broadcast_scoreboard("Default Room")
 
     # send client their new user info
-    response = Poison.encode!(%{content: content, action: "update_user"})
-    {:reply, {:text, response}, new_state}
+    {:ok, player} = Player.fetch(state.player_name)    
+    user_map = Player.to_map(player, 0, false, false)
+    
+    response = Poison.encode!(%{content: user_map, action: "update_user"})
+    {:reply, {:text, response}, state}
   end
 
   # TODO: all
@@ -255,12 +216,8 @@ defmodule Gameboy.SocketHandler do
   @impl true
   def websocket_handle({:json, "submit_movelist", content}, state) do
     Logger.debug("[Move] " <> state.player_name <> " --> #{inspect content}")
-
-    new_robots = Gameboy.RicochetRobots.Main.move_robots("Default Room", state.player_name, content)
-    ### new_robots = Game.move_robots(state.registry_key, content, state.player.unique_key)
-    #response = "test"
+    new_robots = RicochetRobots.move_robots("Default Room", state.player_name, content)
     response = Poison.encode!(%{content: new_robots, action: "update_robots"})
-    Logger.debug("OK, #{response}")
     {:reply, {:text, response}, state}
   end
 
@@ -269,7 +226,7 @@ defmodule Gameboy.SocketHandler do
   def websocket_handle({:json, action, _}, state) do
     Logger.debug("Unhandled action from client #{state.player_name}: " <> action)
 
-    response = Poison.encode!(%{action: "error", message: "Unsupported action."})
+    response = Poison.encode!(%{action: "error", content: "Unsupported action."})
     {:reply, {:text, response}, state}
   end
 
@@ -296,10 +253,9 @@ defmodule Gameboy.SocketHandler do
   @impl true
   def terminate(reason, _req, state) do
     Logger.debug("Termination #{inspect(reason)} -  #{inspect(state)}")
-    # state.rooms
-    # Room.system_chat(state.rooms, state.player_name <> " has left.")
-    # Room.remove_player(state.registry_key, state.player.unique_key)
-    # Room.broadcast_scoreboard(state.registry_key)
+    Room.system_chat("Default Room", state.player_name <> " has left.")
+    Room.remove_player("Default Room", state.player_name)
+    Room.broadcast_scoreboard("Default Room")
     :ok
   end
 end

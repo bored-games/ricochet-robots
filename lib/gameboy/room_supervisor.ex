@@ -5,7 +5,6 @@ defmodule Gameboy.RoomSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("RoomSupervisor start_link with opts: #{inspect(opts)}")
     Supervisor.start_link(__MODULE__, opts)
   end
 

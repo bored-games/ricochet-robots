@@ -5,7 +5,6 @@ defmodule Gameboy.GameSupervisor do
   require Logger
 
   def start_link(opts) do
-    Logger.debug("Started Gameboy.GameSupervisor link")
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -14,7 +13,7 @@ defmodule Gameboy.GameSupervisor do
   def init(opts) do
 
     children = [
-      # THIS SHOULD NOT BE HARDCODED someday
+      # TODO THIS SHOULD NOT BE HARDCODED someday
       %{
         id: Gameboy.RicochetRobots.Main,
         #start: {Gameboy.RicochetRobots.Main, :start_link, [%{registry_key: reg_key}]}
