@@ -8,7 +8,6 @@ defmodule Gameboy.SocketHandler do
 
   require Logger
   alias Gameboy.{Player, Room}
-  alias Gameboy.RicochetRobots.Main, as: RicochetRobots
 
   defstruct player_name: nil
 
@@ -179,13 +178,11 @@ defmodule Gameboy.SocketHandler do
   """
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
-    Logger.debug("[Room chat] remove log msg when it's working.")
 
     #To do: update chat probably needs to take the room name as an argument, and later, check if the user is even in the room. 
    #  {:ok, player} = Player.fetch(state.player_name)
     
-    
-    #unless player.is_muted do
+    #TODO unless player.is_muted do
       Room.player_chat(content["room_name"], state.player_name, content["message"])
     #end
 
@@ -211,13 +208,32 @@ defmodule Gameboy.SocketHandler do
     {:reply, {:text, response}, state}
   end
 
+  
   # TODO: all
-  @doc "submit_movelist : simulate the req. moves"
+  @doc """
+  Handle arbitrary `game_action` calls. If a game exists, the content of the call is passed on to the game, and the response is sent back to the client.
+  - submit_movelist : simulate a set of Ricochet Robots moves
+  """
   @impl true
-  def websocket_handle({:json, "submit_movelist", content}, state) do
-    Logger.debug("[Move] " <> state.player_name <> " --> #{inspect content}")
-    new_robots = RicochetRobots.move_robots("Default Room", state.player_name, content)
-    response = Poison.encode!(%{content: new_robots, action: "update_robots"})
+  def websocket_handle({:json, "game_action", content}, state) do
+    # Logger.debug("[WS Game Info] " <> state.player_name <> " --> #{inspect content}")
+
+    # if there is a curret game
+    # TODO: I think a websocket needs to have a room attached to it...
+    response = case Room.fetch("Default Room") do
+      {:ok, room} ->
+        case game_module = Room.get_game_module(room.game) do
+          :error_no_current_game ->
+            "Error: no current game in room"
+          :error_unknown_game ->
+            "Error: unknown game"
+          game_module ->
+            new_robots = game_module.move_robots("Default Room", state.player_name, content["content"])
+            Poison.encode!(%{content: new_robots, action: "update_robots"})
+        end
+      :error -> response = "No room found"
+    end
+
     {:reply, {:text, response}, state}
   end
 
@@ -246,9 +262,7 @@ defmodule Gameboy.SocketHandler do
 
   # TODO: all
   @doc """
-  Callback function for a terminated socket. Announce the player's
-  parting, remove them from all their rooms, and broadcast the state change to
-  all clients.
+  Callback function for a terminated socket. Announce the player's parting, remove them from all their rooms, and broadcast the state change to all clients.
   """
   @impl true
   def terminate(reason, _req, state) do

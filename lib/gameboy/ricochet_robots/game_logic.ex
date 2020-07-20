@@ -28,10 +28,9 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   def make_move(robots, board, []) do
     Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end)
   end
-  
+ 
 
   def make_move(robots, board, [move | tailmoves]) do
-    
     move = move |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
 
     robots
@@ -43,28 +42,6 @@ defmodule Gameboy.RicochetRobots.GameLogic do
       end
     end)
     |> make_move(board, tailmoves)
-
-    # moved_robot = Enum.find(robots, nil, fn r -> r.color == move.color end)
-    # %{x: rx, y: ry} = moved_robot[:pos]
-
-    # new_pos = case move.direction do
-    #   "up" ->
-    #     %{x: rx, y: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :up, board) | get_robot_blocked_indices(moved_robot[:pos], :up, robots)]))}
-    #   "down" ->
-    #     %{x: rx, y: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :down, board) | get_robot_blocked_indices(moved_robot[:pos], :down, robots)]))}
-    #   "left" ->
-    #     %{x: round(Enum.max([get_wall_blocked_indices(moved_robot[:pos], :left, board) | get_robot_blocked_indices(moved_robot[:pos], :left, robots)])), y: ry}
-    #   "right" ->
-    #     %{x: round(Enum.min([get_wall_blocked_indices(moved_robot[:pos], :right, board) | get_robot_blocked_indices(moved_robot[:pos], :right, robots)])), y: ry}
-    #   _ ->
-    #     %{x: rx, y: ry}
-    # end
-
-    # moved_robot = %{moved_robot | pos: new_pos}
-    # new_robots = Enum.map(robots, fn r -> if r.color == move.color do moved_robot else r end end)
-    # Logger.debug("Bout to call make_move on #{inspect tailmoves}")
-    # make_move(new_robots, board, tailmoves)
-    
 
   end
 
@@ -92,25 +69,11 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     %{x: board_x, y: board_y} = %{y: 2 * robot_y + 1, x: round(2 * robot_x + 1)}
     robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
 
-    # moves =
-    #   [
-    #     {%{x: robot_x - 1, y: robot_y}, board[board_y][board_x - 1], "left"},
-    #     {%{x: robot_x + 1, y: robot_y}, board[board_y][board_x + 1], "right"},
-    #     {%{x: robot_x, y: robot_y - 1}, board[board_y - 1][board_x], "up"},
-    #     {%{x: robot_x, y: robot_y + 1}, board[board_y + 1][board_x], "down"}
-    #   ]
-    #   |> Enum.filter(fn {pos, wall, _dir} ->
-    #     Enum.member?(robot_positions, pos) && wall == 1
-    #   end)
-    #   |> Enum.map(fn {_pos, _wall, dir} -> dir end)
-
-    robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
     move_left  = if ( Enum.member?( robot_positions, %{x: robot_x-1, y: robot_y}) || board[board_y][board_x-1] == 1) do nil else "left" end
     move_right = if ( Enum.member?( robot_positions, %{x: robot_x+1, y: robot_y}) || board[board_y][board_x+1] == 1) do nil else "right" end
     move_up    = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y-1}) || board[board_y-1][board_x] == 1) do nil else "up" end
     move_down  = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y+1}) || board[board_y+1][board_x] == 1) do nil else "down" end
     moves = Enum.filter([move_left, move_right, move_up, move_down], & !is_nil(&1))
-
     %{robot | moves: moves}
   end
 
@@ -186,14 +149,15 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   @doc "Return 5 robots in unique, random positions, avoiding the center 4 squares."
-  @spec populate_robots() :: [Main.robot_t()]
-  def populate_robots() do
-    []
-    |> add_robot("red")
-    |> add_robot("green")
-    |> add_robot("blue")
-    |> add_robot("yellow")
-    |> add_robot("silver")
+  @spec populate_robots([[integer]]) :: [Main.robot_t()]
+  def populate_robots(boundary_board) do
+    robots = []
+      |> add_robot("red")
+      |> add_robot("green")
+      |> add_robot("blue")
+      |> add_robot("yellow")
+      |> add_robot("silver")
+    Enum.map(robots, fn robot -> calculate_moves(robot, robots, boundary_board) end)
   end
 
   # Given color, list of previous robots, add a single 'color' robot to an unoccupied square
@@ -216,6 +180,17 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     |> Enum.random()
   end
 
+  
+  @doc """
+  Return a randomized boundary board, its visual map, and corresponding goal positions.
+  """
+  @spec choose_new_goal([Main.goal_t()]) :: [Main.goal_t()]
+  def choose_new_goal(old_goals) do
+    goal_index = rem(Enum.find_index(old_goals, fn %{active: a} -> a end) + 1, length(old_goals))
+    
+    for {g, i} <- (old_goals |> Enum.with_index), do: (if goal_index == i do %{g | active: true} else %{g | active: false} end)
+  end
+
   @doc """
   Return a randomized boundary board, its visual map, and corresponding goal positions.
   """
@@ -223,9 +198,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   def populate_board() do
     goal_symbols = Main.goal_symbols() |> Enum.shuffle()
 
-    goal_active =
-      Enum.shuffle([
-        true,
+    goal_active = [ false,
         false,
         false,
         false,
@@ -240,8 +213,8 @@ defmodule Gameboy.RicochetRobots.GameLogic do
         false,
         false,
         false,
-        false
-      ])
+        true
+      ]
 
     solid = for c <- 0..32, into: %{}, do: {c, 1}
     open = for c <- 1..31, into: %{0 => 1, 32 => 1}, do: {c, 0}
@@ -312,35 +285,17 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     rlist = rand_distant_pairs([2, 4, 6, 8, 10, 12], [2, 4, 6, 8, 10, 12], rlist)
 
     {a, goals} =
-      add_L2(
-        a,
-        List.first(rlist),
-        Enum.fetch!(goal_symbols, 1),
-        Enum.fetch!(goal_active, 1),
-        goals
-      )
+      add_L2(a, List.first(rlist), Enum.fetch!(goal_symbols, 1), Enum.fetch!(goal_active, 1), goals)
 
     rlist = rand_distant_pairs([2, 4, 6, 8, 10, 12], [4, 6, 8, 10, 12, 14], rlist)
 
     {a, goals} =
-      add_L3(
-        a,
-        List.first(rlist),
-        Enum.fetch!(goal_symbols, 2),
-        Enum.fetch!(goal_active, 2),
-        goals
-      )
+      add_L3(a, List.first(rlist), Enum.fetch!(goal_symbols, 2), Enum.fetch!(goal_active, 2), goals)
 
     rlist = rand_distant_pairs([4, 6, 8, 10, 12, 14], [4, 6, 8, 10, 12, 14], rlist)
 
     {a, goals} =
-      add_L4(
-        a,
-        List.first(rlist),
-        Enum.fetch!(goal_symbols, 3),
-        Enum.fetch!(goal_active, 3),
-        goals
-      )
+      add_L4(a, List.first(rlist), Enum.fetch!(goal_symbols, 3), Enum.fetch!(goal_active, 3), goals)
 
     ############################################
     rlist = rand_distant_pairs([4, 6, 8, 10, 12, 14], [18, 20, 22, 24, 26, 28], rlist)
@@ -613,6 +568,38 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     end
   end
 
+  
+  
+
+  @doc """
+  Given a list of moves and the state of the robots, simulate the moves taken
+  by the robots.
+  """
+  def get_svg_url(state, solution_moves) do
+    goal = Enum.find(state.goals, nil, fn %{active: a} -> a end)
+    goal_str = "#{String.downcase(String.at(goal.symbol, 0))},#{goal.pos.x+16*goal.pos.y}"
+    rr = Enum.find(state.robots, nil, fn %{color: c} -> c == "red" end)
+    rr = "#{rr.pos.x + 16*rr.pos.y}"
+    rg = Enum.find(state.robots, nil, fn %{color: c} -> c == "green" end)
+    rg = "#{rg.pos.x + 16*rg.pos.y}"
+    rb = Enum.find(state.robots, nil, fn %{color: c} -> c == "blue" end)
+    rb = "#{rb.pos.x + 16*rb.pos.y}"
+    ry = Enum.find(state.robots, nil, fn %{color: c} -> c == "yellow" end)
+    ry = "#{ry.pos.x + 16*ry.pos.y}"
+    rs = Enum.find(state.robots, nil, fn %{color: c} -> c == "silver" end)
+    rs = "#{rs.pos.x + 16*rs.pos.y}"
+    bs = Enum.join(List.flatten(state.visual_board), ",")
+    ms = for m <- solution_moves, into: "", do: encode_move(m)
+   # "https://bored-games.github.io/robots-svg/solution.svg?goal=b,166&red=33&green=221&blue=29&yellow=213&silver=100&b=2ZOZkZGRkZGTmZGRkZGRs8gAACBEAAAAAAAAACBEADLIJEASiQAAAAAAAAASiQA2zBOIAAAAAAAAAAAAAAAAM8kAACJMAAAAAAAiTAAkQDLIAAAQgQAAAAAAEIEAE4gyyCZIAAAAIGRkQAAAAAAmesgRgAAAADL//8gAAAAAEbLIAAAAAAAy///IAAAAAAAyyAAkQAAAEJGRgAAAAAAAMsgAE4gAIEQAIEQAAAAAADLMAAAAABKJABKJJkgAAAAyyQAAIkwAAAAAABGAACJMMsgAABCBACZIACRAAAAQgTbIAAAAAAARgAATiAAAAAAz7GRkZGRmbGRkZGRkZmxkdg==&m=b,13,1,13,0&m=b,13,0,9,0&m=b,9,0,9,10&m=b,9,10,3,10&m=b,3,10,3,0&m=b,3,0,8,0&m=y,5,13,5,0&m=b,8,0,6,0&m=b,6,0,6,10"
+    ret = "https://bored-games.github.io/robots-svg/solution.svg?goal=#{goal_str}&red=#{rr}&green=#{rg}&blue=#{rb}&yellow=#{ry}&silver=#{rs}&b=#{bs}#{ms}"
+    Logger.debug(ret)
+    ret
+  end
+
+  defp encode_move(move) do
+    "&m=#{String.downcase(String.at(move["color"], 0))},1,2,3,4"
+  end
+
   # TODO: write this with position_t type
   @doc """
   Take {x1, y1} and {x2, y2}; is the distance between them more than 2.0on
@@ -637,3 +624,4 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     end
   end
 end
+

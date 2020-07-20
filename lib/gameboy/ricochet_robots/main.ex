@@ -21,9 +21,9 @@ defmodule Gameboy.RicochetRobots.Main do
             # 1-robot solutions below this value should not count
             setting_min_moves: 3,
             # new board generated ever `n` many puzzles
-            setting_puzzles_before_new: 10,
+            setting_puzzles_before_new: 8,
             # new board generated after this many more puzzles
-            current_puzzles_until_new: 10,
+            current_puzzles_until_new: 8,
             # current countdown: at 0, best solution wins
             current_countdown: 6,
             # current timer
@@ -37,7 +37,9 @@ defmodule Gameboy.RicochetRobots.Main do
             # user id of current best solution
             best_solution_player_name: nil,
             # storage for the solution robot positions
-            best_solution_robots: []
+            best_solution_robots: [],
+            # store goal indices after they have been used...
+            goal_history: []
 
   @type t :: %{
           room_name: String.t(),
@@ -114,38 +116,46 @@ defmodule Gameboy.RicochetRobots.Main do
   @spec new(room_name: String.t()) :: nil
   def new(room_name) do
     GameSupervisor.start_link(%{room_name: room_name})
-
     # Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
-
-    # Don't need this because init() will send this all out via new_round?
-    # broadcast_visual_board_BAD(room_name)
-    # broadcast_robots_BAD(room_name)
-    # broadcast_goals_BAD(room_name)
-    # broadcast_clock_BAD(room_name)
-    # clear_moves(room_name)
   end
 
   def new_round(state) do
     
-    {visual_board, boundary_board, goals} = GameLogic.populate_board()
-    robots = GameLogic.populate_robots()
+    puzzles_until_new = state.current_puzzles_until_new
 
-    #TODO: decrement games before new shuffle. And change populate to only shuffle if we've done 10 games or whatever
-
-    new_state = %{
-       state
-       | boundary_board: boundary_board,
-         visual_board: visual_board,
-         goals: goals,
-         robots: robots,
-         current_timer: 0,
-         current_countdown: state.setting_countdown,
-         solution_found: false,
-         solution_moves: 0,
-         solution_robots: 0,
-         best_solution_player_name: nil,
-         best_solution_robots: []
-     }
+    new_state =
+      if puzzles_until_new < 1 or state.boundary_board == nil do
+        {visual_board, boundary_board, goals} = GameLogic.populate_board()
+        robots = GameLogic.populate_robots(boundary_board)
+        %{ state
+        | boundary_board: boundary_board,
+          visual_board: visual_board,
+          goals: goals,
+          robots: robots,
+          current_puzzles_until_new: state.setting_puzzles_before_new,
+          current_countdown: state.setting_countdown,
+          current_timer: 0,
+          solution_found: false,
+          solution_moves: 0,
+          solution_robots: 0,
+          best_solution_player_name: nil,
+          best_solution_robots: []
+      }
+      else
+        goals = GameLogic.choose_new_goal(state.goals)
+        %{ state
+        | goals: goals,
+          robots: state.best_solution_robots,
+          current_puzzles_until_new: puzzles_until_new - 1,
+          current_countdown: state.setting_countdown,
+          current_timer: 0,
+          solution_found: false,
+          solution_moves: 0,
+          solution_robots: 0,
+          best_solution_player_name: nil,
+          best_solution_robots: []
+        }
+      end
 
     broadcast_visual_board(new_state)
     broadcast_robots(new_state)
@@ -161,8 +171,7 @@ defmodule Gameboy.RicochetRobots.Main do
   Game functions that *have* to be sent out when a client joins, i.e. send out the board
   """
   @spec welcome_player(__MODULE__.t(), String.t()) :: :ok
-  def welcome_player(state, player_name) do
-    # Logger.debug("[[Ricochet Robots]] need to welcome #{player_name}")
+  def welcome_player(state, _player_name) do
     broadcast_visual_board(state)
     broadcast_robots(state)
     broadcast_goals(state)
@@ -224,61 +233,6 @@ defmodule Gameboy.RicochetRobots.Main do
 
 
 
-
-
-  def broadcast_visual_board_BAD(room_name) do
-    {:ok, state} = fetch(room_name)
-    message = Poison.encode!(%{action: "update_board", content: state.visual_board})
-    GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
-  end
-
-  def broadcast_robots_BAD(room_name) do
-    {:ok, state} = fetch(room_name)
-    message = Poison.encode!(%{action: "update_robots", content: state.robots})
-    GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
-  end
-
-  def broadcast_goals_BAD(room_name) do
-    {:ok, state} = fetch(room_name)
-    message = Poison.encode!(%{action: "update_goals", content: state.goals})
-    GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
-  end
-
-  @doc """
-  Send out the current clock information.
-
-  If a solution has been found, the clock should switch to "countdown" mode.
-  Otherwise, the clock continues running in "timer" mode.
-
-  At certain times, such as when a new user joins or the clock is reset, it is
-  necessary to broadcast the true timer information. Otherwise, the client can
-  handle ticking the timer.
-  """
-  def broadcast_clock_BAD(room_name) do
-    {:ok, state} = fetch(room_name)
-
-    message =
-      Poison.encode!(%{
-        action: if(state.solution_found, do: "switch_to_countdown", else: "switch_to_timer"),
-        content: %{timer: state.current_timer, countdown: state.current_countdown}
-      })
-
-    GenServer.cast(via_tuple(room_name), {:broadcast_to_players, message})
-  end
-
-
-  @doc """
-  Award a point to the winning solution, but only if the solution is good enough.
-
-  `state.setting_min_moves` determines the minimum number of moves required for
-  a single-robot solution to earn a point. All solutions involves more than two
-  robots are scored.
-  """
-  # def award_points(room_name) do
-  #   GenServer.cast(via_tuple(room_name), :award_points)
-  # end
-
-
   @impl true
   def handle_cast({:broadcast_to_players, message}, state) do
     Room.broadcast_to_players(message, state.room_name)
@@ -298,10 +252,9 @@ defmodule Gameboy.RicochetRobots.Main do
     {:ok, state} = fetch(room_name)
 
     moved_robots = GameLogic.make_move(state.robots, state.boundary_board, moves)
-
     if GameLogic.check_solution(moved_robots, state.goals) do
-      GenServer.call(via_tuple(room_name), {:solution_found, room_name, player_name, moves})
-      broadcast_clock_BAD(room_name)
+      GenServer.call(via_tuple(room_name), {:solution_found, room_name, player_name, moved_robots, moves})
+      broadcast_clock(state)
       state.robots
     else
       moved_robots
@@ -322,7 +275,7 @@ defmodule Gameboy.RicochetRobots.Main do
 
 
   @impl true
-  def handle_call({:solution_found, room_name, player_name, moves}, _from, state) do
+  def handle_call({:solution_found, room_name, player_name, moved_robots, moves}, _from, state) do
 
     num_robots =
       moves
@@ -331,25 +284,25 @@ defmodule Gameboy.RicochetRobots.Main do
 
     num_moves = moves |> Enum.count()
 
-    Logger.debug("A SOLUTION WAS FOUND #{num_robots} #{num_moves}")    
-
     return_state =
       if state.solution_found do
         if num_moves < state.solution_moves || (num_moves == state.solution_moves && num_robots > state.solution_robots) do
           Room.system_chat(room_name, "An improved, #{num_robots}-robot, #{num_moves}-move solution has been found.")
 
-          %{
-            state
-            | solution_moves: num_moves,
-              solution_robots: num_robots,
-              best_solution_player_name: player_name
-          }
+          %{ state
+             | solution_moves: num_moves,
+               solution_robots: num_robots,
+               best_solution_player_name: player_name,
+               best_solution_robots: moved_robots
+           }
         else
           state
         end
       else
         Room.system_chat(room_name, "A #{num_robots}-robot, #{num_moves}-move solution has been found.")
-        %{ state | solution_found: true, solution_moves: num_moves, solution_robots: num_robots, best_solution_player_name: player_name }
+        Room.system_chat(room_name, GameLogic.get_svg_url(state, moves), "system_chat_svg")
+
+        %{ state | solution_found: true, solution_moves: num_moves, solution_robots: num_robots, best_solution_player_name: player_name, best_solution_robots: moved_robots }
       end
 
     # return robots to original locations, but update the state with new solution
@@ -374,7 +327,6 @@ defmodule Gameboy.RicochetRobots.Main do
   end
 
   def finish_round(state) do
-    Logger.debug("FINISH ROUND!! Go award points")
     if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
       Room.award_points(state.room_name, state.best_solution_player_name, 1)
       Room.system_chat(state.room_name, "#{state.best_solution_player_name} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")

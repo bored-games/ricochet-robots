@@ -61,7 +61,7 @@ defmodule Gameboy.Room do
   alias Gameboy.{Player, RoomSupervisor}
   alias Gameboy.RicochetRobots.Main, as: RicochetRobots
 
-  @default_player_limit 8
+  @default_player_limit 10
 
   defstruct name: nil,
             player_limit: @default_player_limit,
@@ -84,12 +84,9 @@ defmodule Gameboy.Room do
         }
 
   def start_link(opts) do
-    
     room_name = Map.get(opts, :room_name)
-    mytuple = via_tuple(room_name)
-    Logger.debug("In Room.start_link with MY TUPLE #{inspect(mytuple)}")
 
-    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: mytuple)
+    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
   end
 
   @impl true
@@ -136,6 +133,20 @@ defmodule Gameboy.Room do
     room_name
   end
 
+  
+  @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
+  def fetch(room_name) do
+    case GenServer.whereis(via_tuple(room_name)) do
+      nil -> :error
+      _proc -> 
+        case GenServer.call(via_tuple(room_name), :get_state) do
+          {:ok, player} -> {:ok, player}
+          _ -> :error
+        end
+      end
+  end
+
+
 
   def close(room_name) do
     Logger.info("Preparing for room close: kicking users from room.")
@@ -161,7 +172,7 @@ defmodule Gameboy.Room do
   @spec add_player(String.t(), integer) :: :ok | :error
   def add_player(room_name, player_name) do
     Logger.info("[Room.add_player] Adding `#{player_name}` to [#{room_name}]")
-    {:ok, room} = GenServer.call(via_tuple(room_name), {:add_player, player_name})
+    {:ok, _room} = GenServer.call(via_tuple(room_name), {:add_player, player_name})
     :ok
   end
 
@@ -181,13 +192,21 @@ defmodule Gameboy.Room do
     :ok
   end
 
+  @spec get_game_module(String.t()) :: String.t() | :error_no_current_game | :error_unknown_game
+  def get_game_module(game_name) do
+    case game_name do
+      "robots" -> RicochetRobots
+      nil -> :error_no_current_game
+      _ -> :error_unknown_game
+    end
+  end
   
   # Start a game...
   @spec start_game(String.t(), String.t()) :: :ok | :error
   def start_game(room_name, game_name) do
-    case game_name do
-      "robots" -> {:ok, RicochetRobots.new(room_name)}
-      _ -> :error
+    case get_game_module(game_name) do
+      :error_unknown_game -> :error
+      game_module -> {:ok, game_module.new(room_name)}
     end
   end
   
@@ -218,14 +237,14 @@ defmodule Gameboy.Room do
     GenServer.cast(via_tuple(room_name), {:player_chat, player_name, message})
   end
 
-  @spec system_chat(String.t(), String.t()) :: nil
-  def system_chat(room_name, message) do
-    GenServer.cast(via_tuple(room_name), {:system_chat, message})
+  @spec system_chat(String.t(), String.t(), String.t()) :: nil
+  def system_chat(room_name, message, action \\ "system_chat_new_message") do
+    GenServer.cast(via_tuple(room_name), {:system_chat, message, action})
   end
 
   @spec system_chat_to_player(String.t(), integer, String.t()) :: nil
-  def system_chat_to_player(room_name, player_name, message) do
-    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player_name, message})
+  def system_chat_to_player(room_name, player_name, message, action \\ "system_chat_to_player_new_message") do
+    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player_name, message, action})
   end
 
   @spec broadcast_scoreboard(String.t()) :: nil
@@ -311,7 +330,6 @@ defmodule Gameboy.Room do
 
           Logger.info("Player \"#{player_name}\" has begun a game of #{game_name} in `#{state.name}`.")
           # system_chat(state.name, "#{player.name} has begun a game of...")
-          Logger.info("AND THE GAME WAS: #{inspect game}")
           state = %__MODULE__{state | game: game}
           
           {:reply, :ok, state}
@@ -400,10 +418,10 @@ defmodule Gameboy.Room do
   players currently in the room and save it to the chat log.
   """
   @impl true
-  def handle_cast({:system_chat, chat_message}, state) do
+  def handle_cast({:system_chat, chat_message, action}, state) do
     message =
       Poison.encode!(%{
-        action: "system_chat_new_message",
+        action: action,
         content: %{
           room_name: state.name,
           message: chat_message,
@@ -424,10 +442,10 @@ defmodule Gameboy.Room do
   to the websocket of that specific player.
   """
   @impl true
-  def handle_cast({:system_chat_to_player, player_name, chat_message}, state) do
+  def handle_cast({:system_chat_to_player, player_name, chat_message, action}, state) do
     message =
       Poison.encode!(%{
-        action: "system_chat_to_player_new_message",
+        action: action,
         content: %{
           room_name: state.name,
           message: chat_message,

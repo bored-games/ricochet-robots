@@ -50,6 +50,9 @@ defmodule Gameboy.Player do
     "Doom",
     "Mecha",
     "Alpha",
+    "Beta",
+    "Gamma",
+    "Proto",
     "R2"
   ]
 
@@ -73,6 +76,7 @@ defmodule Gameboy.Player do
     "Talos",
     "EVE",
     "-3PO",
+    "Rossum",
     "bot"
   ]
 
@@ -85,6 +89,21 @@ defmodule Gameboy.Player do
     "9000",
     "100",
     "2020",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
     ""
   ]
 
