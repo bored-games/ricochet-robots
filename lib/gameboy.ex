@@ -29,7 +29,9 @@ defmodule Gameboy do
         keys: :duplicate,
         name: Registry.RoomPlayerRegistry
       ),
-      Gameboy.Room.child_spec( %{room_name: "Default Room", start_game: "robots"} )
+      Supervisor.child_spec({Gameboy.RoomSupervisor, %{name: :rs}}, id: :mys),
+      Supervisor.child_spec({Gameboy.Room, %{room_name: "Default Room", start_game: "robots"}}, id: :room1),
+      Supervisor.child_spec({Gameboy.Room, %{room_name: "Second Room", start_game: "robots"}}, id: :room2),
     ]
 
     opts = [strategy: :one_for_one, name: Gameboy.Application]

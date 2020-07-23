@@ -5,6 +5,7 @@ defmodule Gameboy.RoomSupervisor do
   require Logger
 
   def start_link(opts) do
+    Logger.debug("RoomSupervisor start_link... #{inspect self()} #{inspect(opts)}")
     Supervisor.start_link(__MODULE__, opts)
   end
 
@@ -12,7 +13,7 @@ defmodule Gameboy.RoomSupervisor do
   @impl true
   def init(opts) do
     
-    Logger.debug("RoomSupervisor init... #{inspect(opts)}")
+    Logger.debug("RoomSupervisor init... #{inspect(opts)} from my PID #{inspect self()}")
 
     children = [
       %{
@@ -20,7 +21,9 @@ defmodule Gameboy.RoomSupervisor do
         start: {Gameboy.Room, :start_link, [opts]}
       }
     ]
+
+    children = []
     
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children, strategy: :one_for_one, restart: :transient)
   end
 end

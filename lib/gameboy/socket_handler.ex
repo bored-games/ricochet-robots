@@ -91,6 +91,7 @@ defmodule Gameboy.SocketHandler do
     room_name = Room.new( %{room_name: content} )
     
     Room.add_player(room_name, state.player_name)
+    # TODO: make admin here...
 
     {:reply, {:text, "Room created..."}, state}
   end
@@ -126,7 +127,7 @@ defmodule Gameboy.SocketHandler do
   Start a new game. Check to see if a game is currently in progress; if one
   is, then do not do anything. If no game is currently in progress, send out a
   new board, new robots, and new goals to players.
-  # TODO: Enforce who can start a new game? Or log who started the game?
+  # TODO: Enforce who can start a new game. Only an admin...
   """
   @impl true
   def websocket_handle({:json, "new_game", %{room_name: _room_name}}, state) do
@@ -151,7 +152,16 @@ defmodule Gameboy.SocketHandler do
     # end
   end
 
-  #what the heck is this for now
+  @doc "get_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
+  @impl true
+  def websocket_handle({:json, "get_rooms", _}, state) do
+    {:ok, rooms} = Room.get_rooms()
+    Logger.debug("GET ROOMS: #{inspect rooms}")
+    response = Poison.encode!(%{action: "update_rooms", content: ""})
+    {:reply, {:text, response}, state}
+  end
+  
+
   @doc "get_user : need to send out user initialization info to client, and new user message, scoreboard to all users"
   @impl true
   def websocket_handle({:json, "get_user", room_name}, state) do
@@ -167,7 +177,6 @@ defmodule Gameboy.SocketHandler do
   """
   @impl true
   def websocket_handle({:ping, msg}, state) do
-    # Logger.debug("[PING] from #{inspect state}")
     {:reply, {:pong, msg}, state}
   end
 
@@ -200,7 +209,7 @@ defmodule Gameboy.SocketHandler do
     # send scoreboard to all
     Room.broadcast_scoreboard("Default Room")
 
-    # send client their new user info
+    # send client their new user info: to do: score, isadmin, ismuted
     {:ok, player} = Player.fetch(state.player_name)    
     user_map = Player.to_map(player, 0, false, false)
     
@@ -222,7 +231,7 @@ defmodule Gameboy.SocketHandler do
     # TODO: I think a websocket needs to have a room attached to it...
     response = case Room.fetch("Default Room") do
       {:ok, room} ->
-        case game_module = Room.get_game_module(room.game) do
+        case Room.get_game_module(room.game) do
           :error_no_current_game ->
             "Error: no current game in room"
           :error_unknown_game ->
@@ -231,7 +240,7 @@ defmodule Gameboy.SocketHandler do
             new_robots = game_module.move_robots("Default Room", state.player_name, content["content"])
             Poison.encode!(%{content: new_robots, action: "update_robots"})
         end
-      :error -> response = "No room found"
+      :error -> "No room found"
     end
 
     {:reply, {:text, response}, state}

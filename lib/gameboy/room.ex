@@ -84,6 +84,7 @@ defmodule Gameboy.Room do
         }
 
   def start_link(opts) do
+    Logger.debug("I WANNA START WITH #{inspect opts}")
     room_name = Map.get(opts, :room_name)
 
     {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
@@ -92,16 +93,17 @@ defmodule Gameboy.Room do
   @impl true
   # @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
   def init(opts) do
-    
+
     room_name = opts[:room_name]
+    Logger.info("[#{room_name}] StartChilding new room.")
+    Supervisor.start_link(RoomSupervisor, opts)
+
+    Logger.info("[#{room_name}] Opened new room.")
 
     state = %__MODULE__{
       name: room_name,
       player_limit: Map.get(opts, :player_limit, @default_player_limit)
     }
-
-    
-    Logger.info("[#{room_name}] Opened new room.")
 
     state =
       if game_name = opts[:start_game] do
@@ -146,23 +148,27 @@ defmodule Gameboy.Room do
       end
   end
 
+  # Return a list of all (publicly available) rooms
+  def get_rooms() do
+    
+    Logger.info("Room: listing rooms. #{inspect 'FFFFFFFFFFF'}")
+    Logger.info("Room: listing rooms. #{inspect Supervisor.which_children(Gameboy.RoomSupervisor)}.")
+    
+    rooms = []
 
+    Logger.debug("ROOMS: #{inspect rooms}")
+    
+    {:ok, []}
+  end
 
-  def close(room_name) do
+  def close_room(room_name) do
     Logger.info("Preparing for room close: kicking users from room.")
-
     Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
       for {_pid, player_name} <- entries, do: remove_player(room_name, player_name) # TO DO
     end)
-
-    Logger.debug("Stopping Room, bye bye!")
-    GenServer.stop(via_tuple(room_name), :normal)
   end
 
   def broadcast_to_players(message, room_name) do
-    
-    # Logger.debug("Did you ever do this? #{inspect Registry.count(Registry.RoomPlayerRegistry)} #{inspect message}")
-
     Registry.dispatch(Registry.RoomPlayerRegistry, room_name, fn entries ->
       for {pid, _player_name} <- entries, do: Process.send(pid, {:send_json, message}, [])
     end)
@@ -237,14 +243,19 @@ defmodule Gameboy.Room do
     GenServer.cast(via_tuple(room_name), {:player_chat, player_name, message})
   end
 
-  @spec system_chat(String.t(), String.t(), String.t()) :: nil
-  def system_chat(room_name, message, action \\ "system_chat_new_message") do
-    GenServer.cast(via_tuple(room_name), {:system_chat, message, action})
+  @spec system_chat(String.t(), String.t()) :: nil
+  def system_chat(room_name, message) do
+    GenServer.cast(via_tuple(room_name), {:system_chat, message})
+  end
+
+  @spec system_message(String.t(), map, String.t()) :: nil
+  def system_message(room_name, message, action) do
+    GenServer.cast(via_tuple(room_name), {:system_message, message, action})
   end
 
   @spec system_chat_to_player(String.t(), integer, String.t()) :: nil
-  def system_chat_to_player(room_name, player_name, message, action \\ "system_chat_to_player_new_message") do
-    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player_name, message, action})
+  def system_chat_to_player(room_name, player_name, message) do
+    GenServer.cast(via_tuple(room_name), {:system_chat_to_player, player_name, message})
   end
 
   @spec broadcast_scoreboard(String.t()) :: nil
@@ -280,12 +291,13 @@ defmodule Gameboy.Room do
       case Player.fetch(player_name) do
         {:ok, player} ->
           
-          # TO DO: what if player is already in room?
-
-          Logger.info("[#{state.name} (/#{state.player_limit})] Player \"#{player.name}\" joined.")
-          system_chat(state.name, "#{player.name} joined the room.")
+          # TO DO: what if player is already in room??
 
           state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{score: 0, color: player.color, is_admin: false, is_muted: false})} # TO DO!!!
+
+          Logger.info("[#{state.name} (#{inspect map_size(state.players)}/#{state.player_limit})] Player \"#{player.name}\" joined.")
+          system_chat(state.name, "#{player.name} joined the room.")
+
           {:reply, {:ok, state}, state}
 
         :error ->
@@ -373,10 +385,10 @@ defmodule Gameboy.Room do
 
       if map_size(state.players) == 0 do
         Logger.info("Last player has left room. Closing.")
-        close(state.name)
+        {:stop, :normal, :ok, state}
+      else
+        {:reply, :ok, state}
       end
-
-      {:reply, :ok, state}
     else
       Logger.debug("\"#{player_name}\" not in \"#{state.name}\", did not remove from room.")
       {:reply, :error, state}
@@ -414,26 +426,49 @@ defmodule Gameboy.Room do
   end
 
   @doc """
-  Send a system message to a room. Dispatch the message to all websockets of
+  Send a system chatline to a room. Dispatch the message to all websockets of
   players currently in the room and save it to the chat log.
   """
   @impl true
-  def handle_cast({:system_chat, chat_message, action}, state) do
+  def handle_cast({:system_chat, chat_message}, state) do
     message =
       Poison.encode!(%{
-        action: action,
+        action: "system_chat_new_message",
         content: %{
           room_name: state.name,
           message: chat_message,
-         # timestamp: :calendar.universal_time(), # doesn't encode with poison...
-          timestamp: DateTime.utc_now()
+          timestamp: DateTime.utc_now() # timestamp: :calendar.universal_time(), # doesn't encode with poison...
         }
       })
 
-    Logger.debug("[#{state.name}] System chat: #{inspect chat_message}")
+      Logger.debug("[#{state.name}] System chat: #{inspect chat_message}")
+      broadcast_to_players(message, state.name)
+  
+      state = %__MODULE__{state | chat: ChatLog.log(state.chat, message)}
+      {:noreply, state}
+  end
+
+
+  @doc """
+  Send an arbitrary system message to a room. Dispatch the message to all websockets of
+  players currently in the room.
+  """
+  @impl true
+  def handle_cast({:system_message, content_map, action}, state) do
+    message =
+      Poison.encode!(%{
+        action: action,
+        content: Map.merge(content_map,
+          %{
+            room_name: state.name,
+            timestamp: DateTime.utc_now() # timestamp: :calendar.universal_time(), # doesn't encode with poison...
+          })
+      })
+
+
+    Logger.debug("[#{state.name}] System message: #{inspect message}")
     broadcast_to_players(message, state.name)
 
-    state = %__MODULE__{state | chat: ChatLog.log(state.chat, message)}
     {:noreply, state}
   end
 
@@ -442,15 +477,14 @@ defmodule Gameboy.Room do
   to the websocket of that specific player.
   """
   @impl true
-  def handle_cast({:system_chat_to_player, player_name, chat_message, action}, state) do
+  def handle_cast({:system_chat_to_player, player_name, chat_message}, state) do
     message =
       Poison.encode!(%{
-        action: action,
+        action: "system_chat_to_player_new_message",
         content: %{
           room_name: state.name,
           message: chat_message,
-          # timestamp: :calendar.universal_time(), # doesn't encode with poison...
-           timestamp: DateTime.utc_now()
+          timestamp: DateTime.utc_now() # timestamp: :calendar.universal_time(), # doesn't encode with poison...
         }
       })
 

@@ -38,6 +38,8 @@ defmodule Gameboy.RicochetRobots.Main do
             best_solution_player_name: nil,
             # storage for the solution robot positions
             best_solution_robots: [],
+            # storage for the solution robot positions
+            best_solution_moves: "",
             # store goal indices after they have been used...
             goal_history: []
 
@@ -57,7 +59,9 @@ defmodule Gameboy.RicochetRobots.Main do
           solution_moves: integer,
           solution_robots: integer,
           best_solution_player_name: String.t(),
-          best_solution_robots: [robot_t]
+          best_solution_robots: [robot_t],
+          best_solution_moves: String.t(),
+          goal_history: [integer]
         }
 
   @typedoc "Position: { row: Integer, col: Integer }"
@@ -139,7 +143,9 @@ defmodule Gameboy.RicochetRobots.Main do
           solution_moves: 0,
           solution_robots: 0,
           best_solution_player_name: nil,
-          best_solution_robots: []
+          best_solution_robots: [],
+          best_solution_moves: "",
+          goal_history: []
       }
       else
         goals = GameLogic.choose_new_goal(state.goals)
@@ -153,7 +159,8 @@ defmodule Gameboy.RicochetRobots.Main do
           solution_moves: 0,
           solution_robots: 0,
           best_solution_player_name: nil,
-          best_solution_robots: []
+          best_solution_robots: [],
+          best_solution_moves: ""
         }
       end
 
@@ -236,7 +243,6 @@ defmodule Gameboy.RicochetRobots.Main do
   @impl true
   def handle_cast({:broadcast_to_players, message}, state) do
     Room.broadcast_to_players(message, state.room_name)
-
     {:noreply, state}
   end
 
@@ -251,18 +257,16 @@ defmodule Gameboy.RicochetRobots.Main do
   def move_robots(room_name, player_name, moves) do
     {:ok, state} = fetch(room_name)
 
-    moved_robots = GameLogic.make_move(state.robots, state.boundary_board, moves)
+    {moved_robots, verbose_move_list} = GameLogic.make_move(state.robots, state.boundary_board, "", moves)
     if GameLogic.check_solution(moved_robots, state.goals) do
-      GenServer.call(via_tuple(room_name), {:solution_found, room_name, player_name, moved_robots, moves})
+      state = GenServer.call(via_tuple(room_name), {:solution_found, room_name, player_name, moved_robots, moves, verbose_move_list})
+      Logger.debug("BC")
       broadcast_clock(state)
       state.robots
     else
       moved_robots
     end
-
-
   end
-
 
 
 
@@ -275,7 +279,7 @@ defmodule Gameboy.RicochetRobots.Main do
 
 
   @impl true
-  def handle_call({:solution_found, room_name, player_name, moved_robots, moves}, _from, state) do
+  def handle_call({:solution_found, room_name, player_name, moved_robots, moves, verbose_move_list}, _from, state) do
 
     num_robots =
       moves
@@ -293,20 +297,19 @@ defmodule Gameboy.RicochetRobots.Main do
              | solution_moves: num_moves,
                solution_robots: num_robots,
                best_solution_player_name: player_name,
-               best_solution_robots: moved_robots
+               best_solution_robots: moved_robots,
+               best_solution_moves: verbose_move_list
            }
         else
           state
         end
       else
         Room.system_chat(room_name, "A #{num_robots}-robot, #{num_moves}-move solution has been found.")
-        Room.system_chat(room_name, GameLogic.get_svg_url(state, moves), "system_chat_svg")
-
-        %{ state | solution_found: true, solution_moves: num_moves, solution_robots: num_robots, best_solution_player_name: player_name, best_solution_robots: moved_robots }
+        %{ state | solution_found: true, solution_moves: num_moves, solution_robots: num_robots, best_solution_player_name: player_name, best_solution_robots: moved_robots, best_solution_moves: verbose_move_list }
       end
 
     # return robots to original locations, but update the state with new solution
-    {:reply, state.robots, return_state}
+    {:reply, return_state, return_state}
   end
 
   @doc "Tick 1 second"
@@ -334,6 +337,7 @@ defmodule Gameboy.RicochetRobots.Main do
     else
       Room.system_chat(state.room_name, "#{state.best_solution_player_name} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points.")
     end
+    Room.system_message(state.room_name, %{url: GameLogic.get_svg_url(state)}, "system_chat_svg")
 
     new_round(state)
   end

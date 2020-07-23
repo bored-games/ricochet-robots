@@ -25,23 +25,33 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   Given a list of moves and the state of the robots, simulate the moves taken
   by the robots.
   """
-  def make_move(robots, board, []) do
-    Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end)
+  def make_move(robots, board, verbose_list, []) do
+    {Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end), verbose_list}
   end
  
 
-  def make_move(robots, board, [move | tailmoves]) do
+  def make_move(robots, board, verbose_list, [move | tailmoves]) do
     move = move |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
+        
+    {new_pos, verbose_move} =
+      case Enum.find(robots, nil, fn r -> r.color == move.color end) do
+        nil -> {nil, ""}
+        mr -> 
+          new_pos = calculate_new_pos(mr.pos, move.direction, robots, board)
+          verbose_move = "&m=#{String.downcase(String.at(mr.color, 0))},#{mr.pos.x},#{mr.pos.y},#{new_pos.x},#{new_pos.y}"
+          {new_pos, verbose_move}
+      end
 
-    robots
-    |> Enum.map(fn robot ->
+
+    robots = Enum.map(robots, fn robot ->
       if robot.color == move.color do
-        %{robot | pos: calculate_new_pos(robot.pos, move.direction, robots, board)}
+        %{robot | pos: new_pos}
       else
         robot
       end
     end)
-    |> make_move(board, tailmoves)
+    
+    make_move(robots, board, verbose_list <> verbose_move, tailmoves )
 
   end
 
@@ -575,7 +585,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   Given a list of moves and the state of the robots, simulate the moves taken
   by the robots.
   """
-  def get_svg_url(state, solution_moves) do
+  def get_svg_url(state) do
     goal = Enum.find(state.goals, nil, fn %{active: a} -> a end)
     goal_str = "#{String.downcase(String.at(goal.symbol, 0))},#{goal.pos.x+16*goal.pos.y}"
     rr = Enum.find(state.robots, nil, fn %{color: c} -> c == "red" end)
@@ -589,11 +599,9 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     rs = Enum.find(state.robots, nil, fn %{color: c} -> c == "silver" end)
     rs = "#{rs.pos.x + 16*rs.pos.y}"
     bs = Enum.join(List.flatten(state.visual_board), ",")
-    ms = for m <- solution_moves, into: "", do: encode_move(m)
-   # "https://bored-games.github.io/robots-svg/solution.svg?goal=b,166&red=33&green=221&blue=29&yellow=213&silver=100&b=2ZOZkZGRkZGTmZGRkZGRs8gAACBEAAAAAAAAACBEADLIJEASiQAAAAAAAAASiQA2zBOIAAAAAAAAAAAAAAAAM8kAACJMAAAAAAAiTAAkQDLIAAAQgQAAAAAAEIEAE4gyyCZIAAAAIGRkQAAAAAAmesgRgAAAADL//8gAAAAAEbLIAAAAAAAy///IAAAAAAAyyAAkQAAAEJGRgAAAAAAAMsgAE4gAIEQAIEQAAAAAADLMAAAAABKJABKJJkgAAAAyyQAAIkwAAAAAABGAACJMMsgAABCBACZIACRAAAAQgTbIAAAAAAARgAATiAAAAAAz7GRkZGRmbGRkZGRkZmxkdg==&m=b,13,1,13,0&m=b,13,0,9,0&m=b,9,0,9,10&m=b,9,10,3,10&m=b,3,10,3,0&m=b,3,0,8,0&m=y,5,13,5,0&m=b,8,0,6,0&m=b,6,0,6,10"
-    ret = "https://bored-games.github.io/robots-svg/solution.svg?goal=#{goal_str}&red=#{rr}&green=#{rg}&blue=#{rb}&yellow=#{ry}&silver=#{rs}&b=#{bs}#{ms}"
-    Logger.debug(ret)
-    ret
+    # ms = for m <- state.best_solution_moves, into: "", do: encode_move(m)
+    ms = state.best_solution_moves
+    "https://bored-games.github.io/robots-svg/solution.svg?goal=#{goal_str}&red=#{rr}&green=#{rg}&blue=#{rb}&yellow=#{ry}&silver=#{rs}&b=#{bs}#{ms}&theme=dark"
   end
 
   defp encode_move(move) do
