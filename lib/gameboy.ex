@@ -29,9 +29,12 @@ defmodule Gameboy do
         keys: :duplicate,
         name: Registry.RoomPlayerRegistry
       ),
-      Supervisor.child_spec({Gameboy.RoomSupervisor, %{name: :rs}}, id: :mys),
-      Supervisor.child_spec({Gameboy.Room, %{room_name: "Default Room", start_game: "robots"}}, id: :room1),
-      Supervisor.child_spec({Gameboy.Room, %{room_name: "Second Room", start_game: "robots"}}, id: :room2),
+      Supervisor.child_spec({Gameboy.RoomSupervisor, []}, id: Gameboy.RoomSupervisor),
+      Supervisor.child_spec({Gameboy.PlayerSupervisor, []}, id: Gameboy.PlayerSupervisor),
+      Supervisor.child_spec({Gameboy.GameSupervisor, []}, id: Gameboy.GameSupervisor),
+      %{id: :room1, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Robot City", game_name: "Ricochet Robots"}, :permanent]}, restart: :permanent},
+      %{id: :room2, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Canoe for Two", game_name: "Canoe", player_limit: 2}, :permanent]}, restart: :permanent},
+      %{id: :room3, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Just Chatting", game_name: nil, player_limit: 32}, :permanent]}, restart: :permanent},
     ]
 
     opts = [strategy: :one_for_one, name: Gameboy.Application]

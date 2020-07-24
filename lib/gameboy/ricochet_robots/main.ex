@@ -119,7 +119,8 @@ defmodule Gameboy.RicochetRobots.Main do
   """
   @spec new(room_name: String.t()) :: nil
   def new(room_name) do
-    GameSupervisor.start_link(%{room_name: room_name})
+    Logger.debug("Starting Ricochet Robots in [#{inspect room_name}]")
+    GameSupervisor.start_child(__MODULE__, %{room_name: room_name})
     # Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
   end
 

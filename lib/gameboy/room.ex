@@ -84,21 +84,15 @@ defmodule Gameboy.Room do
         }
 
   def start_link(opts) do
-    Logger.debug("I WANNA START WITH #{inspect opts}")
     room_name = Map.get(opts, :room_name)
-
     {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
   end
 
   @impl true
   # @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
   def init(opts) do
-
     room_name = opts[:room_name]
-    Logger.info("[#{room_name}] StartChilding new room.")
-    Supervisor.start_link(RoomSupervisor, opts)
-
-    Logger.info("[#{room_name}] Opened new room.")
+    Logger.info("[#{room_name}] Opened new room with opts #{inspect opts}.")
 
     state = %__MODULE__{
       name: room_name,
@@ -106,16 +100,17 @@ defmodule Gameboy.Room do
     }
 
     state =
-      if game_name = opts[:start_game] do
+      if game_name = opts[:game_name] do
         case start_game(room_name, game_name) do
-          {:ok, _game} -> %{state | game: game_name}
-          :error -> state
+          {:ok, _game} ->
+            %{state | game: game_name}
+          error ->
+            Logger.error("Error starting game in #{inspect room_name}: #{inspect error}!")
+            state
         end
       else
-        Logger.info("No game to start!")
         state
       end
-
 
     {:ok, state}
   end
@@ -124,14 +119,12 @@ defmodule Gameboy.Room do
   Create a new room and return its name.
   """
   def new(opts) do
-    room_name = generate_name()
-
-    opts = Map.put(opts, :room_name, room_name)
-
-    Logger.debug("Attempting to create room through Room.new() with name \"#{room_name}\" and opts #{inspect(opts)}.")
-    RoomSupervisor.start_link(opts)
-    # system_chat(room_name, "Welcome to #{room_name}!")
-
+   # room_name = generate_name()
+   # opts = Map.put(opts, :room_name, room_name)
+    room_name = Map.get(opts, :room_name, generate_name() )
+    game_name = Map.get(opts, :game_name, "Ricochet Robots" )
+    Logger.debug("Attempting to create room through Room.new() with opts #{inspect(opts)}: #{inspect room_name} #{inspect game_name}.")
+    RoomSupervisor.start_child(opts, :temporary)
     room_name
   end
 
@@ -148,17 +141,17 @@ defmodule Gameboy.Room do
       end
   end
 
+  
+
   # Return a list of all (publicly available) rooms
   def get_rooms() do
     
-    Logger.info("Room: listing rooms. #{inspect 'FFFFFFFFFFF'}")
-    Logger.info("Room: listing rooms. #{inspect Supervisor.which_children(Gameboy.RoomSupervisor)}.")
-    
-    rooms = []
+    room_pids = for {_, pid, _, _} <- DynamicSupervisor.which_children(:room_sup), do: pid
+    rooms = Enum.map(room_pids, fn p -> GenServer.call(p, :get_meta_state) end)
 
-    Logger.debug("ROOMS: #{inspect rooms}")
+    Logger.info("Room: listing rooms. #{inspect rooms}")
     
-    {:ok, []}
+    {:ok, rooms}
   end
 
   def close_room(room_name) do
@@ -175,11 +168,17 @@ defmodule Gameboy.Room do
   end
 
   # Add player to room.
-  @spec add_player(String.t(), integer) :: :ok | :error
+  @spec add_player(String.t(), integer) :: :ok | :error_nonexistant_room | :error_max_players | :error_finding_player
   def add_player(room_name, player_name) do
-    Logger.info("[Room.add_player] Adding `#{player_name}` to [#{room_name}]")
-    {:ok, _room} = GenServer.call(via_tuple(room_name), {:add_player, player_name})
-    :ok
+    Logger.info("[Room.add_player] Adding `#{player_name}` to [#{inspect room_name}] using #{inspect via_tuple(room_name)}")
+    case GenServer.whereis(via_tuple(room_name)) do
+      nil -> :error_nonexistant_room
+      _proc -> 
+        case GenServer.call(via_tuple(room_name), {:add_player, player_name}) do
+          {:ok, _room} -> :ok
+          error -> error
+        end
+    end
   end
 
   
@@ -201,17 +200,17 @@ defmodule Gameboy.Room do
   @spec get_game_module(String.t()) :: String.t() | :error_no_current_game | :error_unknown_game
   def get_game_module(game_name) do
     case game_name do
-      "robots" -> RicochetRobots
+      "Ricochet Robots" -> RicochetRobots
       nil -> :error_no_current_game
       _ -> :error_unknown_game
     end
   end
   
   # Start a game...
-  @spec start_game(String.t(), String.t()) :: :ok | :error
+  @spec start_game(String.t(), String.t()) :: :ok | :error_unknown_game
   def start_game(room_name, game_name) do
     case get_game_module(game_name) do
-      :error_unknown_game -> :error
+      :error_unknown_game -> :error_unknown_game
       game_module -> {:ok, game_module.new(room_name)}
     end
   end
@@ -275,6 +274,16 @@ defmodule Gameboy.Room do
     {:reply, {:ok, state}, state}
   end
 
+  @impl true
+  def handle_call(:get_meta_state, _from, state) do
+    reply = %{
+      game_name: "#{state.game}",
+      room_name: state.name,
+      current_players: map_size(state.players),
+      max_players: state.player_limit }
+    {:reply, reply, state}
+  end
+
 
   @doc """
   Add a player to a room. Check a few things, such as the player limit and the
@@ -285,7 +294,7 @@ defmodule Gameboy.Room do
 
     if map_size(state.players) == state.player_limit do
       Logger.debug("Room at player limit (#{state.player_limit}), rejecting player \"#{player_name}\".")
-      {:reply, :error, state}
+      {:reply, :error_max_players, state}
     else
       # Make sure player really exists.
       case Player.fetch(player_name) do
@@ -302,7 +311,7 @@ defmodule Gameboy.Room do
 
         :error ->
           Logger.debug("Player \"#{player_name}\" does not exist, did not add to room.")
-          {:reply, :error, state}
+          {:reply, :error_finding_player, state}
       end
     end
   end

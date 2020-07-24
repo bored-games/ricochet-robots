@@ -1,24 +1,22 @@
 defmodule Gameboy.PlayerSupervisor do
   @moduledoc false
 
-  use Supervisor
+  use DynamicSupervisor
   require Logger
 
   def start_link(opts) do
-    Supervisor.start_link(__MODULE__, opts)
+    DynamicSupervisor.start_link(__MODULE__, opts, name: :player_sup)
+  end
+
+  def start_child(opts) do
+    spec = %{id: Gameboy.Player, start: {Gameboy.Player, :start_link, [opts]}}
+    DynamicSupervisor.start_child(:player_sup, spec)
   end
 
   #
   @impl true
   def init(opts) do
-    # Logger.debug("Got to PlayerSupervisor.init() with opts=#{inspect(opts)}")
-    children = [
-      %{
-        id: Gameboy.Player,
-        start: {Gameboy.Player, :start_link, [opts]}
-      }
-    ]
-    
-    Supervisor.init(children, strategy: :one_for_one)
+    Logger.debug("PlayerSupervisor init... #{inspect(opts)} from my PID #{inspect self()}")
+    DynamicSupervisor.init(strategy: :one_for_one)
   end
 end

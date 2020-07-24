@@ -12,6 +12,7 @@ defmodule Gameboy.Player do
 
   defstruct name: nil,
             nickname: nil,
+            private_key: nil,
             color: "#c6c6c6",
             socket_pid: nil,
             rooms: MapSet.new()
@@ -19,6 +20,7 @@ defmodule Gameboy.Player do
   @type t :: %{
           name: String.t(),
           nickname: String.t(),
+          private_key: nil | String.t(),
           color: nil | String.t(),
           socket_pid: pid(),
           rooms: MapSet.t()
@@ -125,35 +127,36 @@ defmodule Gameboy.Player do
     "#e0e0e0"
   ]
 
-  def start_link(opts) do   
-    {:ok, player_name} = Map.fetch(opts, :player_name)
-    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: via_tuple(player_name))
-
+  def start_link(%{player_name: player_name, socket_pid: socket_pid, private_key: private_key} = opts) do   
+    {:ok, _} = GenServer.start_link(__MODULE__, opts, name: {:via, Registry, {Registry.PlayerRegistry, player_name, private_key}})
   end
 
   @impl true
-  @spec init(%{player_name: String.t(), socket_pid: pid()}) :: {:ok, %__MODULE__{}}
-  def init(%{player_name: player_name, socket_pid: socket_pid} = opts) do
+  @spec init(%{player_name: String.t(), socket_pid: pid(), private_key: String.t()}) :: {:ok, %__MODULE__{}}
+  def init(%{player_name: player_name, socket_pid: socket_pid, private_key: private_key} = opts) do
     
+    # Register the private key with this player name & PID.
+    Registry.register(Registry.PlayerRegistry, private_key, player_name)
+
     state = %__MODULE__{
       name: player_name,
       nickname: player_name,
+      private_key: private_key,
       color: generate_color(),
       socket_pid: socket_pid
     }
 
-    Logger.info("Created new player #{inspect(opts)}.")
-    Logger.debug("There are now: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
+    Logger.info("Created new player #{inspect(opts)}. There are now #{inspect (Registry.count(Registry.PlayerRegistry)/2)} players.")
 
     {:ok, state}
   end
 
-  @spec new(pid()) :: String.t()
-  def new(socket_pid) do
+  @spec new(pid(), String.t()) :: String.t()
+  def new(socket_pid, private_key) do
     player_name = generate_name()
 
     Logger.debug("Attempting to create player with name \"#{player_name}\".")
-    PlayerSupervisor.start_link(%{player_name: player_name, socket_pid: socket_pid})
+    PlayerSupervisor.start_child(%{player_name: player_name, socket_pid: socket_pid, private_key: private_key})
 
     player_name
   end
