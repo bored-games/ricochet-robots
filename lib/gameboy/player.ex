@@ -235,8 +235,8 @@ defmodule Gameboy.Player do
   
   # Returns a JSON encodable map.
  # @spec to_map(__MODULE__.t()) :: %{username: String.t(), color: String.t(), score: int, is_admin: bool, is_muted: bool}
-  def to_map(player, score, is_admin, is_muted) do
-    %{ username: player.name, nickname: player.nickname, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted }
+  def to_map(player, team, score, is_admin, is_muted) do
+    %{ username: player.name, nickname: player.nickname, team: team, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted }
   end
 
 

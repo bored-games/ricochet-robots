@@ -59,6 +59,8 @@ defmodule Gameboy.Room do
   require Logger
 
   alias Gameboy.{Player, RoomSupervisor}
+  alias Gameboy.Canoe.Main, as: Canoe
+  alias Gameboy.Codenames.Main, as: Codenames
   alias Gameboy.RicochetRobots.Main, as: RicochetRobots
 
   @default_player_limit 10
@@ -76,7 +78,8 @@ defmodule Gameboy.Room do
             required(String.t()) => %{
               score: integer,
               is_admin: boolean,
-              is_muted: boolean
+              is_muted: boolean,
+              team: integer
             }
           },
           game: String.t(),
@@ -122,8 +125,8 @@ defmodule Gameboy.Room do
    # room_name = generate_name()
    # opts = Map.put(opts, :room_name, room_name)
     room_name = Map.get(opts, :room_name, generate_name() )
-    game_name = Map.get(opts, :game_name, "Ricochet Robots" )
-    Logger.debug("Attempting to create room through Room.new() with opts #{inspect(opts)}: #{inspect room_name} #{inspect game_name}.")
+    game_name = Map.get(opts, :game_name, nil )
+    Logger.debug("Attempting to create room through Room.new() with opts #{inspect(opts)}: #{inspect room_name}, game: #{inspect game_name}.")
     RoomSupervisor.start_child(opts, :temporary)
     room_name
   end
@@ -182,17 +185,22 @@ defmodule Gameboy.Room do
   end
 
   
-  # Add player to room.
+  # Welcome player to room, and call the game_module to welcome player to the game.
   @spec welcome_player(String.t(), integer) :: :ok | :error
   def welcome_player(room_name, player_name) do
-    Logger.info("[Room.welcome_player] Welcoming `#{player_name}` to [#{room_name}]")
+    Logger.info("[#{inspect room_name}] Welcoming `#{player_name}`.")
     {:ok, room} = GenServer.call(via_tuple(room_name), :get_state)
-    if room.game do
-      case RicochetRobots.fetch(room_name) do
-        {:ok, game} -> RicochetRobots.welcome_player(game, player_name)
-        :error -> nil
+    test = case get_game_module(room.game) do
+      :error_no_current_game -> :error_no_current_game
+      :error_unknown_game -> :error_unknown_game
+      game_module ->
+        case game_module.fetch(room_name) do
+          {:ok, game} -> game_module.welcome_player(game, player_name)
+          :error_returning_state -> Logger.info("Error returning state")
+          :error_finding_game -> Logger.info("Found game_module but not game")
       end
     end
+    
     broadcast_scoreboard(room_name)
     :ok
   end
@@ -200,9 +208,11 @@ defmodule Gameboy.Room do
   @spec get_game_module(String.t()) :: String.t() | :error_no_current_game | :error_unknown_game
   def get_game_module(game_name) do
     case game_name do
+      "Canoe"           -> Canoe
+      "Codenames"       -> Codenames
       "Ricochet Robots" -> RicochetRobots
-      nil -> :error_no_current_game
-      _ -> :error_unknown_game
+      nil               -> :error_no_current_game
+      _                 -> :error_unknown_game
     end
   end
   
@@ -225,6 +235,11 @@ defmodule Gameboy.Room do
   def get_player(room_name, player_name) do
     Logger.info("[Room.get_player] #{player_name} in #{room_name}")
     GenServer.call(via_tuple(room_name), {:get_player, player_name})
+  end
+  
+  @spec set_team(String.t(), String.t(), integer) :: :ok | :error
+  def set_team(room_name, player_name, team) do
+    GenServer.call(via_tuple(room_name), {:set_team, player_name, team})
   end
   
   @spec award_points(String.t(), integer, integer) :: :ok | :error
@@ -302,7 +317,7 @@ defmodule Gameboy.Room do
           
           # TO DO: what if player is already in room??
 
-          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{score: 0, color: player.color, is_admin: false, is_muted: false})} # TO DO!!!
+          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{team: 0, score: 0, color: player.color, is_admin: false, is_muted: false})} # TO DO!!!
 
           Logger.info("[#{state.name} (#{inspect map_size(state.players)}/#{state.player_limit})] Player \"#{player.name}\" joined.")
           system_chat(state.name, "#{player.name} joined the room.")
@@ -326,7 +341,7 @@ defmodule Gameboy.Room do
       {:ok, player} ->
         case Map.fetch(state.players, player_name) do
           {:ok, room_player} ->
-            {:reply, {:ok, Player.to_map(player, room_player.score, room_player.is_admin, room_player.is_muted)}, state}
+            {:reply, {:ok, Player.to_map(player, room_player.team, room_player.score, room_player.is_admin, room_player.is_muted)}, state}
           :error ->
             {:reply, :error, state}
         end
@@ -362,6 +377,23 @@ defmodule Gameboy.Room do
     end
   end
   
+  
+  @doc """
+  Add points to a player in a room.
+  """
+  @impl true
+  def handle_call({:set_team, player_name, team}, _from, state) do
+    Logger.debug("Gotta set the team : #{inspect team}")
+    # TO DO: handle error...
+    new_state = try do
+      update_in(state.players[player_name].team, &(&1 -  &1 + team))
+    catch
+      _ -> state
+    end
+
+    {:reply, :ok, new_state}
+  end
+
   
   @doc """
   Add points to a player in a room.
@@ -417,7 +449,7 @@ defmodule Gameboy.Room do
             action: "player_chat_new_message",
             content: %{
               room_name: state.name,
-              user: Player.to_map(player, 0, false, false),
+              user: Player.to_map(player, 0, 0, false, false),
               message: chat_message,
               # timestamp: :calendar.universal_time(), # doesn't encode with poison...
                timestamp: DateTime.utc_now()
@@ -513,7 +545,7 @@ defmodule Gameboy.Room do
        
     current_players = Enum.map(state.players, fn {k, v} ->
       case Player.fetch(k) do
-        {:ok, player} -> {k, Player.to_map(player, v.score, v.is_admin, v.is_muted)}
+        {:ok, player} -> {k, Player.to_map(player, v.team, v.score, v.is_admin, v.is_muted)}
         :error -> {k, v}
       end
     end)

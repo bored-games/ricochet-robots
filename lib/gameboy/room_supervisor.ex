@@ -9,7 +9,6 @@ defmodule Gameboy.RoomSupervisor do
   end
 
   def start_child(opts, strategy) do # opts is, e.g. %{room_name: room_name, game_name: game_name}
-    Logger.debug("OPTIONS : #{inspect opts}")
     spec = %{id: Gameboy.Room, restart: strategy, start: {Gameboy.Room, :start_link, [opts]}}
     DynamicSupervisor.start_child(:room_sup, spec)
   end

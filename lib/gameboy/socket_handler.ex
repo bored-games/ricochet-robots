@@ -62,7 +62,7 @@ defmodule Gameboy.SocketHandler do
     case websocket_handle({:json, "join_room", room_name}, state) do
       {:reply, {:text, reply}, _state} -> send(self(), reply)
       :error_nonexistant_room ->
-        case websocket_handle({:json, "create_room", room_name}, state) do
+        case websocket_handle({:json, "create_room", %{room_name: room_name, game_name: game_name}}, state) do
           {:reply, {:text, reply}, _state} ->
             case websocket_handle({:json, "join_room", room_name}, state) do
               {:reply, {:text, reply}, _state} -> send(self(), reply)
@@ -87,11 +87,11 @@ defmodule Gameboy.SocketHandler do
 
   
   @doc """
-  Return the player's info as JSON
+  Return the player's info as JSON... TO DO: INCLUDE SCORE, ETC
   """
   def get_player(player_name) do
     case Player.fetch(player_name) do
-      {:ok, player} -> Poison.encode!(%{action: "update_user", content: Player.to_map(player, 0, false, false) })
+      {:ok, player} -> Poison.encode!(%{action: "update_user", content: Player.to_map(player, 0, 0, false, false) })
       error -> Logger.info("get_player error: #{inspect error}")
     end
   end
@@ -141,10 +141,9 @@ defmodule Gameboy.SocketHandler do
     player_limit: The player limit for the new room. By default, 8.
   """
   @impl true
-  def websocket_handle({:json, "create_room", room_name}, state) do
-    # room_name = Room.new(opts)
-    Logger.debug("websocket_handle create_room with #{room_name}")
-    room_name = Room.new( %{room_name: room_name, game_name: "Ricochet Robots" } )
+  def websocket_handle({:json, "create_room", opts}, state) do # %{ room_name: room_name, game_name: game_name }
+    Logger.debug("websocket_handle create_room with #{inspect opts}")
+    room_name = Room.new(opts) # TO DO: should be able to use `, game_name: "Ricochet Robots"` here
 
     {:reply, {:text, "Room created..."}, state}
   end
@@ -175,9 +174,7 @@ defmodule Gameboy.SocketHandler do
   @doc """
   Action: new_game
 
-  Start a new game. Check to see if a game is currently in progress; if one
-  is, then do not do anything. If no game is currently in progress, send out a
-  new board, new robots, and new goals to players.
+  Start a new game. Check to see if a game is currently in progress; if one is, then do not do anything. If no game is currently in progress...
   # TODO: Enforce who can start a new game. Only an admin...
   """
   @impl true
@@ -243,9 +240,9 @@ defmodule Gameboy.SocketHandler do
     # send scoreboard to all
     Room.broadcast_scoreboard(state.room_name)
 
-    # send client their new user info: to do: score, isadmin, ismuted
+    # send client their new user info: TO DO: team, score, isadmin, ismuted
     {:ok, player} = Player.fetch(state.player_name)    
-    user_map = Player.to_map(player, 0, false, false)
+    user_map = Player.to_map(player, 0, 0, false, false)
     
     response = Poison.encode!(%{content: user_map, action: "update_user"})
     {:reply, {:text, response}, state}
@@ -261,20 +258,24 @@ defmodule Gameboy.SocketHandler do
   def websocket_handle({:json, "game_action", content}, state) do
     # Logger.debug("[WS Game Info] " <> state.player_name <> " --> #{inspect content}")
 
-    # if there is a curret game
-    # TODO: I think a websocket needs to have a room attached to it...
-    response = case Room.fetch(state.room_name) do
-      {:ok, room} ->
-        case Room.get_game_module(room.game) do
-          :error_no_current_game ->
-            "Error: no current game in room"
-          :error_unknown_game ->
-            "Error: unknown game"
-          game_module ->
-            new_robots = game_module.move_robots(state.room_name, state.player_name, content["content"])
-            Poison.encode!(%{content: new_robots, action: "update_robots"})
-        end
-      :error -> "No room found"
+    response =
+      case Room.fetch(state.room_name) do
+        {:ok, room} ->
+          case Room.get_game_module(room.game) do
+            :error_no_current_game ->
+              "Error: no current game in room"
+            :error_unknown_game ->
+              "Error: unknown game"
+            game_module -> game_module.handle_game_action(content["action"], content["content"], state)
+          end
+        :error -> "No room found"
+      end
+
+    response = if is_atom(response) do
+      Logger.debug("To do: clean up websocket game_action (#{inspect response} from #{inspect content})")
+      "#{inspect response}"
+    else
+      response
     end
 
     {:reply, {:text, response}, state}

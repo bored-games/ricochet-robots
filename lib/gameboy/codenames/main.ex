@@ -1,6 +1,6 @@
-defmodule Gameboy.RicochetRobots.Main do
+defmodule Gameboy.Codenames.Main do
   @moduledoc """
-  Ricochet Robots game components, including settings, solving, game state, etc.
+  Codenames game components, including settings, solving, game state, etc.
 
   Consider splitting new_game, new_board, and new_round.
   """
@@ -9,7 +9,7 @@ defmodule Gameboy.RicochetRobots.Main do
   require Logger
 
   alias Gameboy.{Room, GameSupervisor}
-  alias Gameboy.RicochetRobots.{GameLogic}
+  alias Gameboy.Codenames.{GameLogic}
 
   defstruct room_name: nil,
             boundary_board: nil,
@@ -104,9 +104,9 @@ defmodule Gameboy.RicochetRobots.Main do
   @impl true
   @spec init(%{room_name: pid()}) :: {:ok, %__MODULE__{}}
   def init(%{room_name: room_name} = _opts) do
-    Logger.info("[#{room_name}: Ricochet Robots] New game initialized.")
+    Logger.info("[#{room_name}: Codenames] New game initialized.")
     
-    state = new_round(%__MODULE__{room_name: room_name})
+    state = new_round(%__MODULE__{room_name: room_name,})
     :timer.send_interval(1000, :timerevent)
 
     {:ok, state}
@@ -119,8 +119,9 @@ defmodule Gameboy.RicochetRobots.Main do
   """
   @spec new(room_name: String.t()) :: nil
   def new(room_name) do
+    Logger.debug("Starting Codenames in [#{inspect room_name}]")
     GameSupervisor.start_child(__MODULE__, %{room_name: room_name})
-    # Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
+    # Room.system_chat(room_name, "A new game of Codenames is starting!")
   end
 
   def new_round(state) do
@@ -186,28 +187,22 @@ defmodule Gameboy.RicochetRobots.Main do
     :ok
   end
 
-    
-  def handle_game_action(action, content, socket_state) do
-    case action do
-      "submit_movelist" -> 
-        new_robots = __MODULE__.move_robots(socket_state.room_name, socket_state.player_name, content)
-        Poison.encode!(%{content: new_robots, action: "update_robots"})
-      _ -> :error_unknown_game_action
-    end
-  end
 
 
-  # FETCH GAME: it has been registered under the room_name of the room in which it was started.
-  @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error_finding_game | :error_returning_state
+# FETCH GAME: it has been registered under the room_name of the room in which it was started.
+  @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(room_name) do
+    
     case GenServer.whereis(via_tuple(room_name)) do
-      nil -> :error_finding_game
+      nil -> :error
+
       _proc -> 
         case GenServer.call(via_tuple(room_name), :get_state) do
           {:ok, game} -> {:ok, game}
-          _ -> :error_returning_state
+          _ -> :error
         end
       end
+
   end
   
 
@@ -256,7 +251,8 @@ defmodule Gameboy.RicochetRobots.Main do
   @doc """
   Accept a set of moves from the user. Get the next set of valid moves.
 
-  Also check whether the submitted set of moves is a solution to the board. If it is a valid solution, update the round state accordingly.
+  Also check whether the submitted set of moves is a solution to the board. If
+  it is a valid solution, update the round state accordingly.
   """
   @spec move_robots(String.t(), String.t(), [move_t]) :: [robot_t]
   def move_robots(room_name, player_name, moves) do
@@ -265,6 +261,7 @@ defmodule Gameboy.RicochetRobots.Main do
     {moved_robots, verbose_move_list} = GameLogic.make_move(state.robots, state.boundary_board, "", moves)
     if GameLogic.check_solution(moved_robots, state.goals) do
       state = GenServer.call(via_tuple(room_name), {:solution_found, room_name, player_name, moved_robots, moves, verbose_move_list})
+      Logger.debug("BC")
       broadcast_clock(state)
       state.robots
     else
