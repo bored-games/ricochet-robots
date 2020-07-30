@@ -335,7 +335,7 @@ defmodule Gameboy.RicochetRobots.Main do
 
   def finish_round(state) do
     if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
-      Room.award_points(state.room_name, state.best_solution_player_name, 1)
+      Room.add_points(state.room_name, state.best_solution_player_name, 1)
       Room.system_chat(state.room_name, "#{state.best_solution_player_name} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")
       Room.broadcast_scoreboard(state.room_name)
     else

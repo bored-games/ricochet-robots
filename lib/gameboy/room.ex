@@ -188,7 +188,7 @@ defmodule Gameboy.Room do
   # Welcome player to room, and call the game_module to welcome player to the game.
   @spec welcome_player(String.t(), integer) :: :ok | :error
   def welcome_player(room_name, player_name) do
-    Logger.info("[#{inspect room_name}] Welcoming `#{player_name}`.")
+    Logger.info("[#{room_name}] Welcoming `#{player_name}`.")
     {:ok, room} = GenServer.call(via_tuple(room_name), :get_state)
     test = case get_game_module(room.game) do
       :error_no_current_game -> :error_no_current_game
@@ -242,9 +242,9 @@ defmodule Gameboy.Room do
     GenServer.call(via_tuple(room_name), {:set_team, player_name, team})
   end
   
-  @spec award_points(String.t(), integer, integer) :: :ok | :error
-  def award_points(room_name, player_name, points) do
-    GenServer.call(via_tuple(room_name), {:award_points, player_name, points})
+  @spec add_points(String.t(), integer, integer) :: :ok | :error
+  def add_points(room_name, player_name, points) do
+    GenServer.call(via_tuple(room_name), {:add_points, player_name, points})
   end
 
   @spec remove_player(String.t(), integer) :: nil
@@ -399,7 +399,7 @@ defmodule Gameboy.Room do
   Add points to a player in a room.
   """
   @impl true
-  def handle_call({:award_points, player_name, points}, _from, state) do
+  def handle_call({:add_points, player_name, points}, _from, state) do
     
     # find player_name and add points.
     # TO DO: handle error...

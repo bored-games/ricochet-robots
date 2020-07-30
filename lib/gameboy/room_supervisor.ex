@@ -16,7 +16,7 @@ defmodule Gameboy.RoomSupervisor do
   # called any time someone does RoomSupervisor.start_link(opts), obviously
   @impl true
   def init(opts) do
-    Logger.debug("RoomSupervisor init... #{inspect(opts)} from my PID #{inspect self()}")
+    Logger.debug("RoomSupervisor #{inspect(opts)} initialized with PID #{inspect self()}")
     DynamicSupervisor.init(strategy: :one_for_one)
   end
 end
