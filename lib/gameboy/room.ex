@@ -190,18 +190,26 @@ defmodule Gameboy.Room do
   def welcome_player(room_name, player_name) do
     Logger.info("[#{room_name}] Welcoming `#{player_name}`.")
     {:ok, room} = GenServer.call(via_tuple(room_name), :get_state)
-    test = case get_game_module(room.game) do
-      :error_no_current_game -> :error_no_current_game
-      :error_unknown_game -> :error_unknown_game
-      game_module ->
-        case game_module.fetch(room_name) do
-          {:ok, game} -> game_module.welcome_player(game, player_name)
-          :error_returning_state -> Logger.info("Error returning state")
-          :error_finding_game -> Logger.info("Found game_module but not game")
+    test =
+      case get_game_module(room.game) do
+        :error_no_current_game ->
+          broadcast_scoreboard(room_name)
+          :error_no_current_game
+        :error_unknown_game -> 
+          broadcast_scoreboard(room_name)
+          :error_unknown_game
+        game_module ->
+          broadcast_scoreboard(room_name)
+          case game_module.fetch(room_name) do
+            {:ok, game} ->
+              game_module.welcome_player(game, player_name)
+            :error_returning_state ->
+              Logger.info("Error returning state")
+            :error_finding_game ->
+              Logger.info("Found game_module but not game")
+          end
       end
-    end
     
-    broadcast_scoreboard(room_name)
     :ok
   end
 

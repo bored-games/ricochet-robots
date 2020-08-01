@@ -73,8 +73,8 @@ defmodule Gameboy.Canoe.GameLogic do
   @doc """
   Return the number of canoes for the team that just moved
   """
-  @spec check_solution(map, [Main.canoe_t()], map, {integer, integer}) :: {integer, [Main.canoe_t()]}
-  def check_solution(board, completed_canoes, selected, {x, y}) do
+  @spec check_solution([Main.canoe_t()], map, {integer, integer}) :: {integer, [Main.canoe_t()]}
+  def check_solution(completed_canoes, selected, {x, y}) do
     possibleCanoes = getCanoes(@allCanoes, 0, x, y)
 
     new_canoes = get_new_canoes(possibleCanoes, selected)
@@ -107,6 +107,7 @@ defmodule Gameboy.Canoe.GameLogic do
     brd = put_in(brd[5][10], -1)
     brd = put_in(brd[5][11], -1)
     brd = put_in(brd[5][12], -1)
+    brd
   end
 end
 

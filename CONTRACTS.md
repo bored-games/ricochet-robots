@@ -1,32 +1,29 @@
-Gotta figure out nicknames and shit.
+Players can change nicknames on top of an automatically generated (string) username.
 
-Perhaps a player_name (nickname) display would be fitting.
+**Backend → Frontend**
 
-Backend -> Frontend
+- [x] connect_to_server (shares room name?)
+- [x] update_board (gives the boundary board)
+- [x] update_robots (gives robot positions at start or after simulating a set of moves)
+- [x] update_goals (gives all goal positions and the one active goal)
+- [x] update_scoreboard (gives a list of all room users and their scores)
+- [x] update_user (gives information about self user)
+- [x] switch_to_countdown (signals a solution has been found)
+- [x] switch_to_timer (signals a new round beginning)
+- [x] clear_moves_queue (forces clear move (e.g. at new round))
+- [x] player_chat_new_message (player chat to all)
+- [x] system_chat_new_message (system chat to all)
+- [x] system_chat_to_player_new_message (system chat to individual player)
+- [x] system_chat_svg (special system message containing a solution SVG url)
 
-- [ ] connect_to_server (replace this with ping/pong & state of client?)
-- [x] update_board
-- [x] update_robots
-- [x] update_goals
-- [x] switch_to_countdown
-- [x] switch_to_timer
-- [x] clear_moves_queue
-- [x] update_scoreboard
-- [ ] update_user
-- [x] update_chat --> player_chat_new_message // system_chat_new_message
-- [ ] tick
-- [x] new_game (fe needed)
-- [ ] end_game/finish_round (fe needed)
-- [ ] new_round (fe needed)
 
-Frontend -> Backend
+**Frontend → Backend**
 
 - [x] ping
-- [x] create_room (fe needed)
-- [x] join_room (fe needed)
-- [ ] new_game (fe needed)
-- [ ] submit_movelist
-- [ ] create_user
-- [ ] update_user
-- [ ] update_chat
-- [ ] new_game
+- [x] get_user (query if info is needed)
+- [x] update_user (set new name, color)
+- [x] update_chat (send a message)
+- [x] game_action
+    - [x] submit_movelist
+    - [ ] new_game (fe needed)
+    

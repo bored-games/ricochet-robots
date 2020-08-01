@@ -12,92 +12,53 @@ defmodule Gameboy.Codenames.Main do
   alias Gameboy.Codenames.{GameLogic}
 
   defstruct room_name: nil,
-            boundary_board: nil,
-            visual_board: nil,
-            robots: [],
-            goals: [],
-            # Time in seconds after a solution is found (60, 6 for testing)
+            password: "",
+            board: nil,
+            red_remaining: 0,
+            blue_remaining: 0,
+            current_team: 1, # 1 is red, 2 is blue
+            game_over: false,
             setting_countdown: 6,
-            # 1-robot solutions below this value should not count
-            setting_min_moves: 3,
-            # new board generated ever `n` many puzzles
-            setting_puzzles_before_new: 8,
-            # new board generated after this many more puzzles
-            current_puzzles_until_new: 8,
-            # current countdown: at 0, best solution wins
             current_countdown: 6,
-            # current timer
             current_timer: 0,
-            # boolean: has solution been found
-            solution_found: false,
-            # number of moves in current best solution
-            solution_moves: 0,
-            # number of robots in current best solution
-            solution_robots: 0,
-            # user id of current best solution
-            best_solution_player_name: nil,
-            # storage for the solution robot positions
-            best_solution_robots: [],
-            # storage for the solution robot positions
-            best_solution_moves: "",
-            # store goal indices after they have been used...
-            goal_history: []
+            red_spymaster: nil,
+            blue_spymaster: nil,
+            ready_for_new_game: %{red: false, blue: false},
+            clue: nil,
+            remaining_guesses: 0
+            
 
   @type t :: %{
           room_name: String.t(),
-          boundary_board: map,
-          visual_board: map,
-          robots: [robot_t],
-          goals: [goal_t],
+          password: String.t(),
+          board: map,
+          red_remaining: integer,
+          blue_remaining: integer,
+          current_team: 1 | 2,
+          game_over: boolean,
           setting_countdown: integer,
-          setting_min_moves: integer,
-          setting_puzzles_before_new: integer,
-          current_puzzles_until_new: integer,
           current_countdown: integer,
           current_timer: integer,
-          solution_found: boolean,
-          solution_moves: integer,
-          solution_robots: integer,
-          best_solution_player_name: String.t(),
-          best_solution_robots: [robot_t],
-          best_solution_moves: String.t(),
-          goal_history: [integer]
+          red_spymaster: String.t(),
+          blue_spymaster: String.t(),
+          ready_for_new_game: %{red: boolean, blue: boolean},
+          clue: clue_t,
+          remaining_guesses: integer
         }
+        
 
-  @typedoc "Position: { row: Integer, col: Integer }"
-  @type position_t :: %{x: integer, y: integer}
+  @typedoc "Card: ..."
+  @type card_t :: %{id: integer, word: String.t(), team: integer, uncovered: boolean}
 
-  @typedoc "Goal: { pos: position, symbol: String, active: boolean }"
-  @type goal_t :: %{pos: position_t, symbol: String.t(), active: boolean}
+  @typedoc "Wordlist: ..."
+  @type wordlist_t :: %{ key: integer, name: String.t(), include: boolean, words: [String.t()]}
 
-  @typedoc "Move"
-  @type move_t :: %{color: String.t(), direction: String.t()}
+  @typedoc "Clue: ..."
+  @type clue_t :: %{ word: String.t(), count: integer}
 
-  @typedoc "Robot: { pos: position, color: String, moves: [move] }"
-  @type robot_t :: %{pos: position_t, color: String.t(), moves: [move_t]}
-
-  @goal_symbols [
-    "RedMoon",
-    "GreenMoon",
-    "BlueMoon",
-    "YellowMoon",
-    "RedPlanet",
-    "GreenPlanet",
-    "BluePlanet",
-    "YellowPlanet",
-    "RedCross",
-    "GreenCross",
-    "BlueCross",
-    "YellowCross",
-    "RedGear",
-    "GreenGear",
-    "BlueGear",
-    "YellowGear"
-  ]
-
-  def goal_symbols(), do: @goal_symbols
 
   def start_link(%{room_name: room_name} = opts) do
+    Logger.debug("Registering game with #{inspect via_tuple(room_name)}")
     GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
   end
 
@@ -106,16 +67,14 @@ defmodule Gameboy.Codenames.Main do
   def init(%{room_name: room_name} = _opts) do
     Logger.info("[#{room_name}: Codenames] New game initialized.")
     
-    state = new_round(%__MODULE__{room_name: room_name,})
+    state = new_round(%__MODULE__{room_name: room_name})
     :timer.send_interval(1000, :timerevent)
 
     {:ok, state}
   end
 
   @doc """
-  Begin a new game (new boards, new robot positions, new goal positions).
-
-  Broadcast new game information and clear all move queues.
+  Begin a new game. Broadcast new game information.
   """
   @spec new(room_name: String.t()) :: nil
   def new(room_name) do
@@ -125,51 +84,26 @@ defmodule Gameboy.Codenames.Main do
   end
 
   def new_round(state) do
+    {password, board, red_remaining, blue_remaining, current_team} = GameLogic.populate_board()
     
-    puzzles_until_new = state.current_puzzles_until_new
+    new_state = %{ state | board: board,
+                           password: password,
+                           red_remaining: red_remaining,
+                           blue_remaining: blue_remaining,
+                           current_team: current_team,
+                           game_over: false,
+                           red_spymaster: nil,
+                           blue_spymaster: nil,
+                           ready_for_new_game: %{red: false, blue: false},
+                           clue: nil,
+                           remaining_guesses: 0
+                         }
 
-    new_state =
-      if puzzles_until_new < 1 or state.boundary_board == nil do
-        {visual_board, boundary_board, goals} = GameLogic.populate_board()
-        robots = GameLogic.populate_robots(boundary_board)
-        %{ state
-        | boundary_board: boundary_board,
-          visual_board: visual_board,
-          goals: goals,
-          robots: robots,
-          current_puzzles_until_new: state.setting_puzzles_before_new,
-          current_countdown: state.setting_countdown,
-          current_timer: 0,
-          solution_found: false,
-          solution_moves: 0,
-          solution_robots: 0,
-          best_solution_player_name: nil,
-          best_solution_robots: [],
-          best_solution_moves: "",
-          goal_history: []
-      }
-      else
-        goals = GameLogic.choose_new_goal(state.goals)
-        %{ state
-        | goals: goals,
-          robots: state.best_solution_robots,
-          current_puzzles_until_new: puzzles_until_new - 1,
-          current_countdown: state.setting_countdown,
-          current_timer: 0,
-          solution_found: false,
-          solution_moves: 0,
-          solution_robots: 0,
-          best_solution_player_name: nil,
-          best_solution_robots: [],
-          best_solution_moves: ""
-        }
-      end
-
-    broadcast_visual_board(new_state)
-    broadcast_robots(new_state)
-    broadcast_goals(new_state)
+    message = Poison.encode!(%{action: "new_game", content: ""})
+    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
+    broadcast_board(new_state)
     broadcast_clock(new_state)
-    broadcast_clear_moves(new_state)
+    broadcast_turn(new_state)
 
     new_state
   end
@@ -180,96 +114,395 @@ defmodule Gameboy.Codenames.Main do
   """
   @spec welcome_player(__MODULE__.t(), String.t()) :: :ok
   def welcome_player(state, _player_name) do
-    broadcast_visual_board(state)
-    broadcast_robots(state)
-    broadcast_goals(state)
+    broadcast_board(state)
     broadcast_clock(state)
+    broadcast_turn(state)
+    broadcast_spymasters(state)
     :ok
   end
 
 
+  def handle_game_action(action, content, socket_state) do
+    {:ok, state} = fetch(socket_state.room_name)
 
-# FETCH GAME: it has been registered under the room_name of the room in which it was started.
-  @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
+    #Todo: only send poison response if necessary, else :noreply..
+    case action do
+      "submit_clue" -> 
+        case GenServer.call(via_tuple(socket_state.room_name), {:submit_clue, socket_state.player_name, content}) do
+          :ok -> Poison.encode!(%{content: false, action: "update_spymaster_modal"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "uncover_card" -> 
+        case GenServer.call(via_tuple(socket_state.room_name), {:uncover_card, socket_state.player_name, content}) do
+          :ok -> Poison.encode!(%{content: "ok", action: "update_board"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "pass" -> 
+        case GenServer.call(via_tuple(socket_state.room_name), {:pass, socket_state.player_name}) do
+          :ok -> Poison.encode!(%{content: "ok", action: "resign"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "set_spymaster" -> 
+        case GenServer.call(via_tuple(socket_state.room_name), {:set_spymaster, socket_state.player_name, content}) do
+          :ok -> Poison.encode!(%{content: "Waiting for opponent...", action: "update_message"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "set_team" ->
+        case GenServer.call(via_tuple(socket_state.room_name), {:set_team, socket_state.player_name, content}) do
+          :ok -> Poison.encode!(%{content: "ok", action: "update_teams"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "new_game" ->
+        case GenServer.call(via_tuple(socket_state.room_name), {:new_game, socket_state.player_name}) do
+          :ok -> Poison.encode!(%{content: "ok", action: "new_game"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "uncover_all" ->
+        case GenServer.call(via_tuple(socket_state.room_name), {:uncover_all, socket_state.player_name}) do
+          :ok -> Poison.encode!(%{content: "ok", action: "uncover_all"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      _ -> :error_unknown_game_action
+    end
+  end
+
+
+  # FETCH GAME: it has been registered under the room_name of the room in which it was started.
+  @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error_finding_game | :error_returning_state
   def fetch(room_name) do
-    
     case GenServer.whereis(via_tuple(room_name)) do
-      nil -> :error
-
+      nil -> :error_finding_game
       _proc -> 
         case GenServer.call(via_tuple(room_name), :get_state) do
           {:ok, game} -> {:ok, game}
-          _ -> :error
+          _ -> :error_returning_state
         end
       end
-
-  end
-  
-
-  def broadcast_visual_board(state) do
-    message = Poison.encode!(%{action: "update_board", content: state.visual_board})
-    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
 
-  def broadcast_robots(state) do
-    message = Poison.encode!(%{action: "update_robots", content: state.robots})
-    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
-  end
-
-  def broadcast_goals(state) do
-    message = Poison.encode!(%{action: "update_goals", content: state.goals})
+  def broadcast_board(state) do
+    board = for %{id: i, word: w, uncovered: u, team: t} <- state.board, do: %{id: i, word: w, team: if u do t else nil end}
+    content = %{board: board, red_remaining: state.red_remaining, blue_remaining: state.blue_remaining}
+    message = Poison.encode!(%{action: "update_board", content: content})
     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
 
   def broadcast_clock(state) do
     message =
       Poison.encode!(%{
-        action: if(state.solution_found, do: "switch_to_countdown", else: "switch_to_timer"),
+        action: "switch_to_countdown",
         content: %{timer: state.current_timer, countdown: state.current_countdown}
       })
     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
 
-  @doc """
-  Send out command to clear queue of moves. At a new game, for example, all
-  queued moves should be forced to clear.
-  """
-  def broadcast_clear_moves(state) do
-    message = Poison.encode!(%{action: "clear_moves_queue", content: ""})
+  def broadcast_turn(state) do
+    text = 
+      cond do
+        state.clue == nil -> 
+          if state.current_team == 1 do
+            "Waiting for red spymaster"
+          else
+            "Waiting for blue spymaster"
+          end
+
+        state.game_over ->
+          "Select New Game to continue."
+
+        state.current_team == 1 ->
+          "Red team's turn"
+      
+        state.current_team == 2 ->
+          "Blue team's turn"
+
+        true ->
+          ""
+      end
+    message = Poison.encode!(%{action: "update_status", content: text})
     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
-
-
+  
+  def broadcast_spymasters(state) do
+    message = Poison.encode!(%{action: "update_spymasters", content: [state.red_spymaster, state.blue_spymaster]})
+    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
+  end
 
   @impl true
   def handle_cast({:broadcast_to_players, message}, state) do
     Room.broadcast_to_players(message, state.room_name)
     {:noreply, state}
   end
-
   
-  @doc """
-  Accept a set of moves from the user. Get the next set of valid moves.
 
-  Also check whether the submitted set of moves is a solution to the board. If
-  it is a valid solution, update the round state accordingly.
-  """
-  @spec move_robots(String.t(), String.t(), [move_t]) :: [robot_t]
-  def move_robots(room_name, player_name, moves) do
-    {:ok, state} = fetch(room_name)
+  @impl true
+  def handle_call({:submit_clue, player, content}, _from, state) do
+    Logger.debug("SUBMIT CLUE BY #{inspect player}: #{inspect content}")
 
-    {moved_robots, verbose_move_list} = GameLogic.make_move(state.robots, state.boundary_board, "", moves)
-    if GameLogic.check_solution(moved_robots, state.goals) do
-      state = GenServer.call(via_tuple(room_name), {:solution_found, room_name, player_name, moved_robots, moves, verbose_move_list})
-      Logger.debug("BC")
-      broadcast_clock(state)
-      state.robots
-    else
-      moved_robots
-    end
+    cond do
+      state.game_over ->
+        {:reply, {:error, "Error: the game is already over."}, state}
+
+      player != state.red_spymaster and player != state.blue_spymaster ->  
+        {:reply, {:error, "You must be Spymaster to submit clues."}, state}
+          
+      state.clue != nil ->  
+        {:reply, {:error, "A clue has already been sent."}, state}
+
+      true ->
+        case content do
+          %{"count" => c, "word" => w} ->
+            case Integer.parse(c) do
+              {rg, _} ->
+                state = %{state | clue: w, remaining_guesses: rg}
+                broadcast_turn(state)
+                {:reply, :ok, state}
+              
+              _ ->
+                {:reply, {:error, "Invalid number of guesses!"}, state}
+              end
+
+          _ -> 
+            {:reply, {:error, "Invalid clue!"}, state}
+        end
+
+      end
   end
 
 
+  @impl true
+  def handle_call({:uncover_card, player_name, index}, _from, state) do
+    case Room.fetch(state.room_name) do
+      {:ok, room} -> 
+        case Map.fetch(room.players, player_name) do
+          {:ok, room_player} ->
+            Logger.debug("MAKIN MOVES #{inspect player_name} on team #{inspect state.current_team} #{inspect state.current_team} #{inspect index}")
+            
+            cond do
+              state.game_over -> # TO DO: game is ovr but player wants to show cards 1 at a time...
+                {:reply, {:error, "Select New Game to continue."}, state}
+
+              state.current_team != room_player.team ->
+                {:reply, {:error, "It's not your turn!"}, state}
+
+              state.clue == nil ->
+                {:reply, {:error, "Awaiting clue from your spymaster."}, state}
+
+              player_name == state.red_spymaster or player_name == state.blue_spymaster ->
+                {:reply, {:error, "Spymasters don't uncover cards!"}, state}
+
+              true ->
+                case GameLogic.make_move(state.board, state.current_team, index) do
+                  :error_not_valid_move ->
+                    {:reply, {:error, "Invalid attempt!"}, state}
+
+                  {continue_turn, assassin, red_remaining, blue_remaining, new_board} ->
+                    state =
+                      if continue_turn do
+                        %{ state | board: new_board,
+                                   remaining_guesses: state.remaining_guesses - 1 }
+                      else
+                        %{ state | board: new_board,
+                                   current_team: 3-state.current_team }
+                      end
+
+                    message = Poison.encode!(%{action: "update_last_move", content: index})
+                    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
+                    
+                    cond do
+                      # game is over (assassin, 0 left for a team)
+                      false ->
+                        {:reply, :ok, state}
+
+                      state.remaining_guesses <= 0 -> # turn is over
+                        state = %{ state | current_team: 3-state.current_team, clue: nil }
+                        {:reply, :ok, state}
+
+                      true -> # keep guessing!
+                        {:reply, :ok, state}
+
+                    end
+                    # check if game is over.                    
+                    # {count_all, count_new, complete_Codenamess} = GameLogic.check_solution(new_board, complete_Codenamess, selected_pieces, {x, y})
+                      
+                    # check if out of moves
+                      
+                    broadcast_board(state)
+                    broadcast_turn(state)
+                    broadcast_spymasters(state)
+                    {:reply, :ok, state}
+                  end
+            end
+            
+          :error ->
+            {:reply, {:error, "Error finding #{inspect player_name} in #{inspect state.room_name}"}, state}
+        end
+
+
+
+      _ ->
+        Logger.debug("Could not find room #{inspect state.room_name}")
+        {:reply, {:error, "Unknown room"}, state}
+    end
+
+  end
+
+  
+  
+  @impl true
+  def handle_call({:pass, player}, _from, state) do
+    Logger.debug("PASS BY #{inspect player}")
+    cond do
+      false ->
+      # TODO player.team != current_team ->  
+        {:reply, {:error, "It's not your turn."}, state}
+        
+      false ->
+      # state.clue == nil ->  
+        {:reply, {:error, "It's not time to pass."}, state}
+      
+      player == state.red_spymaster or player == state.blue_spymaster ->  
+        {:reply, {:error, "Spymasters can't pass."}, state}
+
+      true ->
+        new_state = %{state | current_team: 3-state.current_team, clue: nil}
+        
+        broadcast_turn(new_state)
+        broadcast_spymasters(state)
+                            
+        {:reply, :ok, new_state}
+      end
+  end
+
+  
+  @impl true
+  def handle_call({:set_team, player, teamid}, _from, state) do
+    Logger.debug("SETTING TEAM #{inspect player} #{inspect teamid}")
+
+    
+    case Room.set_team(state.room_name, player, teamid) do
+      :ok ->   
+        broadcast_turn(state)
+        Room.broadcast_scoreboard(state.room_name)
+        {:reply, :ok, state}
+      _ ->
+        Room.broadcast_scoreboard(state.room_name)
+        {:reply, {:error, "Unable to set team"}, state}
+    end
+  end
+
+  
+  
+    
+  
+  @impl true
+  def handle_call({:set_spymaster, player, spymaster}, _from, state) do
+
+    Logger.debug("SET SPYMASTER BY #{inspect player} to #{inspect spymaster}")
+
+    case Room.fetch(state.room_name) do
+      {:ok, room} -> 
+        case Map.fetch(room.players, player) do
+          {:ok, room_player} ->
+            case Map.fetch(room.players, spymaster) do
+              {:ok, room_spymaster} ->
+
+              cond do
+                room_player.team != room_spymaster.team ->  
+                  {:reply, {:error, "Your Spymaster must be on your team!"}, state}
+                  
+                room_player.team < 1 or room_player.team > 2 ->  
+                  {:reply, {:error, "Join a team before selecting a Spymaster."}, state}
+                
+                state.red_spymaster == spymaster or state.blue_spymaster == spymaster ->  
+                  {:reply, {:error, "Player is already a Spymaster."}, state}
+
+                true ->
+                  state =
+                    if room_player.team == 1 do
+                      %{ state | red_spymaster: spymaster}
+                    else
+                      %{ state | blue_spymaster: spymaster}
+                    end
+
+                  broadcast_spymasters(state)
+                  {:reply, :ok, state}
+              end
+
+            _ ->    
+              {:reply, {:error, "Unable to find \"#{inspect spymaster}\"."}, state}
+          end
+
+        _ ->    
+          {:reply, {:error, "Unable to find \"#{inspect player}\". Please try reconnecting."}, state}
+      end
+
+      _ -> 
+        {:reply, {:error, "Unable to find your game room."}, state}
+    end
+  end
+
+    
+  
+  @impl true
+  def handle_call({:new_game, player}, _from, state) do
+
+    Logger.debug("NEW GAME INIT BY #{inspect player}")
+
+    cond do
+      player != state.red_spymaster and player != state.blue_spymaster ->  
+        {:reply, {:error, "Only spymasters can start the game."}, state}
+
+      true ->
+        ready =
+          cond do
+            player == state.red_spymaster ->
+              %{state.ready_for_new_game | red: true}
+            
+            player == state.blue_spymaster ->
+              %{state.ready_for_new_game | blue: true}
+          end
+        
+        if ready == %{red: true, blue: true} do
+          new_game = new_round(state) 
+          {:reply, :ok, new_game}
+        else
+          {:reply, :ok, %{state | ready_for_new_game: ready}}
+        end
+        
+      end
+  end
+
+  
+  @impl true
+  def handle_call({:uncover_all, player}, _from, state) do
+
+    Logger.debug("NEW GAME INIT BY #{inspect player}")
+
+    cond do
+      not state.game_over ->  
+        {:reply, {:error, "The game isn't over yet!."}, state}
+
+      true ->
+        ready =
+          cond do
+            player == state.red ->
+              %{state.ready_for_new_game | red: true}
+            
+            player == state.blue ->
+              %{state.ready_for_new_game | blue: true}
+          end
+        
+        if ready == %{red: true, blue: true} do
+          new_game = new_round(state) 
+          {:reply, :ok, new_game}
+        else
+          {:reply, :ok, %{state | ready_for_new_game: ready}}
+        end
+        
+      end
+  end
+
+    
 
 
   @impl true
@@ -277,75 +510,15 @@ defmodule Gameboy.Codenames.Main do
     {:reply, {:ok, state}, state}
   end
 
-
-
-  @impl true
-  def handle_call({:solution_found, room_name, player_name, moved_robots, moves, verbose_move_list}, _from, state) do
-
-    num_robots =
-      moves
-      |> Enum.uniq_by(fn %{"color" => c} -> c end)
-      |> Enum.count()
-
-    num_moves = moves |> Enum.count()
-
-    return_state =
-      if state.solution_found do
-        if num_moves < state.solution_moves || (num_moves == state.solution_moves && num_robots > state.solution_robots) do
-          Room.system_chat(room_name, "An improved, #{num_robots}-robot, #{num_moves}-move solution has been found.")
-
-          %{ state
-             | solution_moves: num_moves,
-               solution_robots: num_robots,
-               best_solution_player_name: player_name,
-               best_solution_robots: moved_robots,
-               best_solution_moves: verbose_move_list
-           }
-        else
-          state
-        end
-      else
-        Room.system_chat(room_name, "A #{num_robots}-robot, #{num_moves}-move solution has been found.")
-        %{ state | solution_found: true, solution_moves: num_moves, solution_robots: num_robots, best_solution_player_name: player_name, best_solution_robots: moved_robots, best_solution_moves: verbose_move_list }
-      end
-
-    # return robots to original locations, but update the state with new solution
-    {:reply, return_state, return_state}
-  end
-
+  
   @doc "Tick 1 second"
   @impl GenServer
   def handle_info(:timerevent, state) do
-    countdown = state.current_countdown - if state.solution_found, do: 1, else: 0
-    timer = state.current_timer + 1
-
-    new_state =
-      if countdown <= 0 do
-        finish_round(state)
-      else
-        %{state | current_countdown: countdown, current_timer: timer}
-      end
-
-
-    {:noreply, new_state}
-  end
-
-  def finish_round(state) do
-    if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
-      Room.add_points(state.room_name, state.best_solution_player_name, 1)
-      Room.system_chat(state.room_name, "#{state.best_solution_player_name} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")
-      Room.broadcast_scoreboard(state.room_name)
-    else
-      Room.system_chat(state.room_name, "#{state.best_solution_player_name} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points.")
-    end
-    Room.system_message(state.room_name, %{url: GameLogic.get_svg_url(state)}, "system_chat_svg")
-
-    new_round(state)
+    {:noreply, state}
   end
 
   defp via_tuple(room_name) do
     {:via, Registry, {Registry.GameRegistry, room_name}}
   end
-
   
 end

@@ -84,6 +84,8 @@ defmodule Gameboy.Canoe.Main do
                            ready_for_new_game: %{red: false, blue: false}
                            }
 
+    message = Poison.encode!(%{action: "new_game", content: ""})
+    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
     broadcast_board(new_state)
     broadcast_clock(new_state)
     broadcast_turn(new_state)
@@ -101,18 +103,6 @@ defmodule Gameboy.Canoe.Main do
     broadcast_clock(state)
     broadcast_turn(state)
     :ok
-  end
-
-  def finish_round(state) do
-    if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
-      Room.add_points(state.room_name, state.best_solution_player_name, 1)
-      Room.system_chat(state.room_name, "#{state.best_solution_player_name} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")
-      Room.broadcast_scoreboard(state.room_name)
-    else
-      Room.system_chat(state.room_name, "#{state.best_solution_player_name} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points.")
-    end
-
-    new_round(state)
   end
 
 
@@ -133,7 +123,7 @@ defmodule Gameboy.Canoe.Main do
         end
       "new_game" -> 
         case GenServer.call(via_tuple(socket_state.room_name), {:new_game, socket_state.player_name}) do
-          :ok -> Poison.encode!(%{content: "ok", action: "new_game"})
+          :ok -> Poison.encode!(%{content: "Waiting for opponent...", action: "update_message"})
           {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
         end
       "set_team" -> # TODO: logic/security here... only allow team changes when appropriate...?
@@ -231,7 +221,7 @@ defmodule Gameboy.Canoe.Main do
                         2 -> {MapSet.put(state.selected_blues, {x, y}), state.complete_blue_canoes, "Blue"}
                       end
                     
-                    {count_all, count_new, complete_canoes} = GameLogic.check_solution(new_board, complete_canoes, selected_pieces, {x, y})
+                    {count_all, count_new, complete_canoes} = GameLogic.check_solution(complete_canoes, selected_pieces, {x, y})
   
                     state =
                       if count_all >= 2 do
