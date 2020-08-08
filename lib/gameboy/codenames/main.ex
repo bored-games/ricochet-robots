@@ -369,28 +369,41 @@ defmodule Gameboy.Codenames.Main do
   
   
   @impl true
-  def handle_call({:pass, player}, _from, state) do
-    Logger.debug("PASS BY #{inspect player}")
-    cond do
-      false ->
-      # TODO player.team != current_team ->  
-        {:reply, {:error, "It's not your turn."}, state}
-        
-      false ->
-      # state.clue == nil ->  
-        {:reply, {:error, "It's not time to pass."}, state}
-      
-      player == state.red_spymaster or player == state.blue_spymaster ->  
-        {:reply, {:error, "Spymasters can't pass."}, state}
+  def handle_call({:pass, player_name}, _from, state) do
+    
+    case Room.fetch(state.room_name) do
+      {:ok, room} -> 
+        case Map.fetch(room.players, player_name) do
+          {:ok, room_player} ->
+            Logger.debug("PASS BY #{inspect player_name}")
 
-      true ->
-        new_state = %{state | current_team: 3-state.current_team, clue: nil, remaining_guesses: 0}
-        
-        broadcast_turn(new_state)
-        broadcast_spymasters(state)
-                            
-        {:reply, :ok, new_state}
-    end
+            cond do
+              room_player.team != state.current_team ->  
+                {:reply, {:error, "It's not your turn."}, state}
+                
+              state.clue == nil ->  
+                {:reply, {:error, "It's not time to pass."}, state}
+              
+              player_name == state.red_spymaster or player_name == state.blue_spymaster ->  
+                {:reply, {:error, "Spymasters can't pass."}, state}
+
+              true ->
+                new_state = %{state | current_team: 3-state.current_team, clue: nil, remaining_guesses: 0}
+                
+                broadcast_turn(new_state)
+                broadcast_spymasters(state)
+                                    
+                {:reply, :ok, new_state}
+            end
+            
+            :error ->
+              {:reply, {:error, "Error finding #{inspect player_name} in #{inspect state.room_name}"}, state}
+          end
+        _ ->
+          Logger.debug("Could not find room #{inspect state.room_name}")
+          {:reply, {:error, "Unknown room"}, state}
+      end
+
   end
 
   
