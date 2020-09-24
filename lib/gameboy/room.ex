@@ -62,6 +62,7 @@ defmodule Gameboy.Room do
   alias Gameboy.Canoe.Main, as: Canoe
   alias Gameboy.Codenames.Main, as: Codenames
   alias Gameboy.RicochetRobots.Main, as: RicochetRobots
+  alias Gameboy.Homeworlds.Main, as: Homeworlds
 
   @default_player_limit 10
 
@@ -219,6 +220,7 @@ defmodule Gameboy.Room do
       "Canoe"           -> Canoe
       "Codenames"       -> Codenames
       "Ricochet Robots" -> RicochetRobots
+      "Homeworlds"      -> Homeworlds
       nil               -> :error_no_current_game
       _                 -> :error_unknown_game
     end

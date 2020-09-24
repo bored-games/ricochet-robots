@@ -45,6 +45,10 @@ defmodule Gameboy.SocketHandler do
         Logger.info("New websocket connection (codenames > #{room_name}) initiated.")
         state = %{state | room_name: room_name } # TO DO: verify that this is the right place to add this. can it be added in add_player?
         {:cowboy_websocket, request, {room_name, "Codenames", state}, %{idle_timeout: @idle_timeout}}
+      [ "homeworlds" | [room_name]] ->
+        Logger.info("New websocket connection (homeworlds > #{room_name}) initiated.")
+        state = %{state | room_name: room_name } # TO DO: verify that this is the right place to add this. can it be added in add_player?
+        {:cowboy_websocket, request, {room_name, "Homeworlds", state}, %{idle_timeout: @idle_timeout}}
       _ ->
         Logger.info("New websocket connection (lobby) initiated.")
         {:cowboy_websocket, request, state, %{idle_timeout: @idle_timeout}}
