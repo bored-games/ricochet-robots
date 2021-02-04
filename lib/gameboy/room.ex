@@ -95,12 +95,13 @@ defmodule Gameboy.Room do
   @impl true
   # @spec init(%{room_name: String.t()}) :: {:ok, %__MODULE__{}}
   def init(opts) do
-    room_name = opts[:room_name]
-    Logger.info("[#{room_name}] Opened new room with opts #{inspect opts}.")
+    
+    room_name = Map.get(opts, :room_name)
+    max_players = Map.get(opts, :player_limit, @default_player_limit)
 
     state = %__MODULE__{
       name: room_name,
-      player_limit: Map.get(opts, :player_limit, @default_player_limit)
+      player_limit: max_players
     }
 
     state =
@@ -123,13 +124,38 @@ defmodule Gameboy.Room do
   Create a new room and return its name.
   """
   def new(opts) do
-   # room_name = generate_name()
-   # opts = Map.put(opts, :room_name, room_name)
-    room_name = Map.get(opts, :room_name, generate_name() )
+    room_name = Map.get(opts, :room_name, generate_name()) # TODO: check for duplicates, see generate_name for example
     game_name = Map.get(opts, :game_name, nil )
+
+    Logger.info("room name : [#{String.length(opts[:room_name])}] opts #{inspect opts}.")
+    room_name =
+      case String.length(opts[:room_name]) do
+        rn when rn in 2..32 -> opts[:room_name]
+        _ -> generate_name()
+      end
+    Logger.info("[#{room_name}] Opened new room with opts #{inspect opts}.")
+
+    max_players =
+      case Map.get(opts, :player_limit, @default_player_limit) do
+        nil -> @default_player_limt
+        n when n in 1..32 -> n
+        n when is_integer(n) -> @default_player_limit
+        str -> (case Integer.parse(str) do
+                 {n, _} when n in 1..32 -> n
+                 _ -> @default_player_limit
+               end)
+        _ -> @default_player_limit
+      end
+
+    opts = Map.put(opts, :room_name, room_name)
+    opts = Map.put(opts, :player_limit, max_players)
+
     Logger.debug("Attempting to create room through Room.new() with opts #{inspect(opts)}: #{inspect room_name}, game: #{inspect game_name}.")
-    RoomSupervisor.start_child(opts, :temporary)
-    room_name
+    case RoomSupervisor.start_child(opts, :temporary) do
+      {:ok, _pid} -> {room_name, game_name}
+      err -> err
+    end
+
   end
 
   
@@ -149,7 +175,6 @@ defmodule Gameboy.Room do
 
   # Return a list of all (publicly available) rooms
   def get_rooms() do
-    
     room_pids = for {_, pid, _, _} <- DynamicSupervisor.which_children(:room_sup), do: pid
     rooms = Enum.map(room_pids, fn p -> GenServer.call(p, :get_meta_state) end)
 

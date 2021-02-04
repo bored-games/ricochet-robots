@@ -35,8 +35,8 @@ defmodule Gameboy do
       %{id: :room1, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Robot City", game_name: "Ricochet Robots"}, :permanent]}, restart: :permanent},
       %{id: :room2, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Canoe for Two", game_name: "Canoe", player_limit: 2}, :permanent]}, restart: :permanent},
       %{id: :room3, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "I Spy", game_name: "Codenames", player_limit: 10}, :permanent]}, restart: :permanent},
-      %{id: :room3, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Homeworldz", game_name: "Homeworlds", player_limit: 2}, :permanent]}, restart: :permanent},
-      %{id: :room4, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Just Chatting", game_name: nil, player_limit: 32}, :permanent]}, restart: :permanent},
+      %{id: :room4, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Homeworldz", game_name: "Homeworlds", player_limit: 2}, :permanent]}, restart: :permanent},
+      %{id: :room5, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Just Chatting", game_name: nil, player_limit: 32}, :permanent]}, restart: :permanent},
     ]
 
     opts = [strategy: :one_for_one, name: Gameboy.Application]
