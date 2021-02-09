@@ -76,6 +76,10 @@ defmodule Gameboy.RicochetRobots.Main do
   @typedoc "Robot: { pos: position, color: String, moves: [move] }"
   @type robot_t :: %{pos: position_t, color: String.t(), moves: [move_t]}
 
+  @typedoc "Erlang's queue for solver"
+  @type queue() :: :queue.queue()
+
+
   @goal_symbols [
     "RedMoon",
     "GreenMoon",
@@ -123,6 +127,7 @@ defmodule Gameboy.RicochetRobots.Main do
     # Room.system_chat(room_name, "A new game of Ricochet Robots is starting!")
   end
 
+
   def new_round(state) do
     
     puzzles_until_new = state.current_puzzles_until_new
@@ -163,6 +168,9 @@ defmodule Gameboy.RicochetRobots.Main do
           best_solution_moves: ""
         }
       end
+      
+    Room.system_chat(state.room_name, "Spawning the solver.")
+    Task.async(fn -> spawn_solver(new_state) end )
 
     broadcast_visual_board(new_state)
     broadcast_robots(new_state)
@@ -173,6 +181,90 @@ defmodule Gameboy.RicochetRobots.Main do
     new_state
   end
 
+
+
+  @doc """
+  ...
+  A graph contains %{num_moves, num_robots_moved => %MapSet{goal_robot_positions, [extra_robot_positions]}
+  or maybe... {target_robot, other_robots} => [moved_robot_strings]
+
+  """
+  @spec spawn_solver(__MODULE__.t()) :: :ok
+  def spawn_solver(state) do
+
+   
+    # Logger.info( "[Solver] #{inspect state.robots}." )
+    case Enum.find(state.goals, fn %{active: a} -> a end) do
+      %{symbol: active_symbol, pos: active_pos} -> 
+        active_color = active_symbol |> GameLogic.color_to_symbol()
+        
+       #  {[target_robot | _], extra_robots} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
+        init_queue = :queue.new()
+        init_queue = :queue.in({ state.robots, [] }, init_queue)
+        next_queue = :queue.new()
+        Logger.info( "[Solver] initialized. Must get #{active_color} to #{inspect active_pos}." )
+        bfs(init_queue, [], next_queue, 0, state.goals, state.boundary_board)
+        :ok
+      _ -> :solver_err_no_goals
+
+    end
+  end
+  
+  # a node is {target_robot, [other_robots], [shortest-path-here]}
+
+  # Queue is the current layer we are traversing. But a node here also keeps track of history-moves (shortest path to get here) and used-robots.
+  # History is a mapset so that we don't repeat cycles. It does not need values, just unique board positions.
+  # Next_Layer is the set of nodes in the next layer, confirmed not to be solutions already
+  # Number_Moves just keeps track of the layer because it's easy.
+
+  defp bfs([], _history, [], _, _goals, _boundary_board) do
+    :bfs_failed
+  end
+
+  defp bfs(_neighbors, _history, _next_layer, 10, _goals, _boundary_board) do
+    Logger.info( "[BFS] Max depth reached." )
+    :bfs_max_depth_reached
+  end
+
+  # nothing else to check on this layer, start searching the next layer.
+  defp bfs(:empty, history, next_layer, num_moves, goals, boundary_board) do
+    Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
+    new_queue = :queue.new()
+    bfs(next_layer, history, new_queue, num_moves+1, goals, boundary_board)
+  end
+
+
+  defp queue_insert(queue, tree), do: :queue.in(tree, queue)
+
+
+  # 
+  defp bfs(queue, history, next_layer, num_moves, goals, boundary_board) do
+    
+    case :queue.out(queue) do
+      {:empty, {[], []}} ->
+        Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
+        new_queue = :queue.new()
+        bfs(next_layer, history, new_queue, num_moves+1, goals, boundary_board)
+      {{:value, {robot_posns, history}}, qtail} ->
+        # get all valid moves and add them as children to the `next_layer` of the graph
+        new_moves = Enum.flat_map(robot_posns, fn %{color: c, moves: m} -> Enum.map(m, fn d -> %{color: c, direction: d} end) end) #TO do: apply the move() fn to q and return a set of robot positisns
+        new_nodes = new_moves |>  Enum.map(fn m ->  {GameLogic.solver_make_move(robot_posns, boundary_board, m), [m | history]} end) #TO DO : APPEND MOVE TO HISTORY ++ [m]
+        next_queue = Enum.reduce(new_nodes, next_layer, fn n, q -> :queue.in(n, q) end)
+        
+        # Logger.info( "[BFS] #{inspect new_nodes}." )
+
+        # check each child. if the solution is found, we return. otherwise we add each element to the next neighbors, and continue...
+        case Enum.find( new_nodes, nil, fn {p, h} -> GameLogic.check_solution(p, goals) end) do
+          nil -> 
+            # next_queue = :queue.in(new_nodes, next_layer)
+            bfs(qtail, history, next_queue, num_moves, goals, boundary_board) # TO DO: check queue implementation
+          {solved_position, solved_history} ->
+            Logger.info( "[BFS] success!!!!!!!!!!!!!!!!! #{inspect Enum.reverse(solved_history)}." )
+            :SUCCESS
+        end
+        
+    end
+  end
 
   @doc """
   Game functions that *have* to be sent out when a client joins, i.e. send out the board
@@ -273,13 +365,10 @@ defmodule Gameboy.RicochetRobots.Main do
   end
 
 
-
-
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, {:ok, state}, state}
   end
-
 
 
   @impl true
@@ -331,6 +420,18 @@ defmodule Gameboy.RicochetRobots.Main do
 
 
     {:noreply, new_state}
+  end
+
+  # Returned with a message (status) from the solver
+  def handle_info({_pid, status}, state) do
+    Logger.info("[Solver] has completed with status #{status}.")
+    Room.system_chat(state.room_name, "Solver has completed.")
+    {:noreply, state}
+  end
+
+  # Returned after solver dies, whether successfully or not
+  def handle_info({:DOWN, _ref, :process, _object, _reason}, state) do
+    {:noreply, state}
   end
 
   def finish_round(state) do
