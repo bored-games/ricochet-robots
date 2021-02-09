@@ -221,23 +221,13 @@ defmodule Gameboy.RicochetRobots.Main do
     :bfs_failed
   end
 
-  defp bfs(_neighbors, _history, _next_layer, 10, _goals, _boundary_board) do
+  defp bfs(_neighbors, _history, _next_layer, 8, _goals, _boundary_board) do
     Logger.info( "[BFS] Max depth reached." )
     :bfs_max_depth_reached
   end
 
-  # nothing else to check on this layer, start searching the next layer.
-  defp bfs(:empty, history, next_layer, num_moves, goals, boundary_board) do
-    Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
-    new_queue = :queue.new()
-    bfs(next_layer, history, new_queue, num_moves+1, goals, boundary_board)
-  end
 
-
-  defp queue_insert(queue, tree), do: :queue.in(tree, queue)
-
-
-  # 
+  # breadth-first search
   defp bfs(queue, history, next_layer, num_moves, goals, boundary_board) do
     
     case :queue.out(queue) do
@@ -245,10 +235,12 @@ defmodule Gameboy.RicochetRobots.Main do
         Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
         new_queue = :queue.new()
         bfs(next_layer, history, new_queue, num_moves+1, goals, boundary_board)
+
       {{:value, {robot_posns, history}}, qtail} ->
         # get all valid moves and add them as children to the `next_layer` of the graph
-        new_moves = Enum.flat_map(robot_posns, fn %{color: c, moves: m} -> Enum.map(m, fn d -> %{color: c, direction: d} end) end) #TO do: apply the move() fn to q and return a set of robot positisns
-        new_nodes = new_moves |>  Enum.map(fn m ->  {GameLogic.solver_make_move(robot_posns, boundary_board, m), [m | history]} end) #TO DO : APPEND MOVE TO HISTORY ++ [m]
+        new_nodes = robot_posns
+                    |> Enum.flat_map(fn %{color: c, moves: m} -> Enum.map(m, fn d -> %{color: c, direction: d} end) end)
+                    |> Enum.map(fn m ->  {GameLogic.solver_make_move(robot_posns, boundary_board, m), [m | history]} end)
         next_queue = Enum.reduce(new_nodes, next_layer, fn n, q -> :queue.in(n, q) end)
         
         # Logger.info( "[BFS] #{inspect new_nodes}." )
@@ -258,6 +250,7 @@ defmodule Gameboy.RicochetRobots.Main do
           nil -> 
             # next_queue = :queue.in(new_nodes, next_layer)
             bfs(qtail, history, next_queue, num_moves, goals, boundary_board) # TO DO: check queue implementation
+            
           {solved_position, solved_history} ->
             Logger.info( "[BFS] success!!!!!!!!!!!!!!!!! #{inspect Enum.reverse(solved_history)}." )
             :SUCCESS
