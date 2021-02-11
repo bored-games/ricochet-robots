@@ -198,63 +198,87 @@ defmodule Gameboy.RicochetRobots.Main do
       %{symbol: active_symbol, pos: active_pos} -> 
         active_color = active_symbol |> GameLogic.color_to_symbol()
         
-       #  {[target_robot | _], extra_robots} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
+        {[target_robot | _], extra_robots} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
+
+        goal = Enum.find(state.goals, fn %{active: a} -> a end)
+        target_robot = {target_robot.pos.x, target_robot.pos.y}
+        extra_robots = extra_robots |> Enum.map(fn %{pos: p} -> {p.x, p.y} end)
+
         init_queue = :queue.new()
-        init_queue = :queue.in({ state.robots, [] }, init_queue)
-        next_queue = :queue.new()
-        Logger.info( "[Solver] initialized. Must get #{active_color} to #{inspect active_pos}." )
-        bfs(init_queue, [], next_queue, 0, state.goals, state.boundary_board)
-        :ok
+        init_queue = :queue.in({ target_robot, extra_robots, [] }, init_queue)
+        empty_next_layer_queue = :queue.new()
+
+        # compute the stopping points for each cell and direction.
+        stopping_board = GameLogic.precompute_stopping_cells(state.boundary_board)
+
+        Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect {goal.pos.x, goal.pos.y}}." )
+        Logger.info( "[Solver] initialized. Other robots are: #{inspect extra_robots}." )
+       
+        bfs(init_queue, MapSet.new, [], empty_next_layer_queue, 0, {goal.pos.x, goal.pos.y}, stopping_board)
+
       _ -> :solver_err_no_goals
 
     end
   end
   
-  # a node is {target_robot, [other_robots], [shortest-path-here]}
+  # a node is {target_robot, [other_robots], [shortest-path-history]}
+  
 
   # Queue is the current layer we are traversing. But a node here also keeps track of history-moves (shortest path to get here) and used-robots.
-  # History is a mapset so that we don't repeat cycles. It does not need values, just unique board positions.
+  # History is a mapset so that we don't repeat cycles(?). It does not need values, just unique board positions.
   # Next_Layer is the set of nodes in the next layer, confirmed not to be solutions already
   # Number_Moves just keeps track of the layer because it's easy.
 
-  defp bfs([], _history, [], _, _goals, _boundary_board) do
+  defp bfs([], _history, [], _, _goal, _stopping_board) do
     :bfs_failed
   end
 
-  defp bfs(_neighbors, _history, _next_layer, 8, _goals, _boundary_board) do
+  defp bfs(_neighbors, _history, _next_layer, 15, _goal, _stopping_board) do
     Logger.info( "[BFS] Max depth reached." )
     :bfs_max_depth_reached
   end
 
 
   # breadth-first search
-  defp bfs(queue, history, next_layer, num_moves, goals, boundary_board) do
+  defp bfs(queue, discovered_nodes, history, next_layer, num_moves, goal, stopping_board) do
     
     case :queue.out(queue) do
       {:empty, {[], []}} ->
         Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
-        new_queue = :queue.new()
-        bfs(next_layer, history, new_queue, num_moves+1, goals, boundary_board)
+        empty_next_layer_queue = :queue.new()
+        bfs(next_layer, discovered_nodes, history, empty_next_layer_queue, num_moves+1, goal, stopping_board)
 
-      {{:value, {robot_posns, history}}, qtail} ->
+      {{:value, {active_robot, extra_robots, history}}, qtail} ->
         # get all valid moves and add them as children to the `next_layer` of the graph
-        new_nodes = robot_posns
-                    |> Enum.flat_map(fn %{color: c, moves: m} -> Enum.map(m, fn d -> %{color: c, direction: d} end) end)
-                    |> Enum.map(fn m ->  {GameLogic.solver_make_move(robot_posns, boundary_board, m), [m | history]} end)
-        next_queue = Enum.reduce(new_nodes, next_layer, fn n, q -> :queue.in(n, q) end)
-        
+
+        # first test active_robot because if there is a solution, this will be the fastest way.
+        new_nodes = [:up, :down, :left, :right] # to do , move this into move_target_robot
+                    |> Enum.map(fn m ->
+                      {GameLogic.solver_move_target_robot(active_robot, extra_robots, stopping_board, m, goal), [m | history] }
+                    end)
+        case Enum.find( new_nodes, nil, fn {{soln_found, _, _}, _} -> soln_found end) do
+          {{_soln_found, _active_robot, _extra_robots}, history} -> 
+            Logger.info( "[BFS] success!!!!!!!!!!!!!!!!! #{inspect Enum.reverse(history)}." )
+            :SUCCESS
+          nil -> 
+            # active robot has no solution so let's get add all the child nodes to those found by moving extra_robots.
+            new_nodes = new_nodes |> Enum.map(fn {{_, ar, ers}, h} -> {ar, ers, h} end)
+            
+            more_new_nodes = GameLogic.solver_move_extra_robots(active_robot, extra_robots, stopping_board, history)
+            all_new_nodes = new_nodes ++ more_new_nodes
+
+            {discovered_nodes, next_queue} = Enum.reduce(all_new_nodes, {discovered_nodes, next_layer}, fn {ar, ers, h}, {discnodes, queue} ->
+                case MapSet.member?(discovered_nodes, {ar, ers}) do
+                  false -> {MapSet.put(discnodes, {ar, ers}), :queue.in({ar, ers, h}, queue)}
+                  _ -> {discnodes, queue}
+                end
+              end)
+              
+            bfs(qtail, discovered_nodes, history, next_queue, num_moves, goal, stopping_board)
+        end
+
         # Logger.info( "[BFS] #{inspect new_nodes}." )
 
-        # check each child. if the solution is found, we return. otherwise we add each element to the next neighbors, and continue...
-        case Enum.find( new_nodes, nil, fn {p, h} -> GameLogic.check_solution(p, goals) end) do
-          nil -> 
-            # next_queue = :queue.in(new_nodes, next_layer)
-            bfs(qtail, history, next_queue, num_moves, goals, boundary_board) # TO DO: check queue implementation
-            
-          {solved_position, solved_history} ->
-            Logger.info( "[BFS] success!!!!!!!!!!!!!!!!! #{inspect Enum.reverse(solved_history)}." )
-            :SUCCESS
-        end
         
     end
   end

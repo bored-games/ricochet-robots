@@ -8,6 +8,57 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   alias Gameboy.RicochetRobots.{Main}
 
 
+  # Given a robot position and direction, return the relevant index of the
+  # first wall the robot will hit.
+  def precompute_stopping_cells(board) do
+    stopping_cells = for r <- 0..15, into: %{}, do: { r, (for c <- 0..15, into: %{}, do: {c, populate_stopping_cell({c, r}, board)}) }
+  end
+
+  @doc """
+  Given a starting position and a bounadry board, pre-compute the [up, down, left, right] stopping cells based on walls
+  """
+  defp populate_stopping_cell({x, y}, board) do
+    bb_pos = %{row: round(2 * y + 1), col: round(2 * x + 1)}
+
+    u = for(z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]})
+        |> Enum.filter(fn {a, b} -> b == 1 && a < bb_pos[:row] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.max()
+
+    d = for(z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]})
+        |> Enum.filter(fn {a, b} -> b == 1 && a > bb_pos[:row] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.min()
+
+    l = board[bb_pos[:row]]
+        |> Enum.filter(fn {a, b} -> b == 1 && a < bb_pos[:col] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.max()
+
+    r = board[bb_pos[:row]]
+        |> Enum.filter(fn {a, b} -> b == 1 && a > bb_pos[:col] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.min()
+
+    {div(u, 2), div(d, 2) - 1, div(l, 2), div(r, 2) - 1}
+  end
+  
+  
+  @doc """
+  Get the stopping cell for a given direction
+  """
+  def get_stopping_cell({x, y}, board, direction) do
+    
+    case direction do
+      :up    -> elem(board[y][x], 0)
+      :down  -> elem(board[y][x], 1)
+      :left  -> elem(board[y][x], 2)
+      :right -> elem(board[y][x], 3)
+      _ -> :error_unknown_direction
+    end
+
+  end
+  
   @doc """
   Return whether the robot that matches the goal color is at the active goal.
   """
@@ -22,29 +73,104 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     end)
   end
 
-
   
   @doc """
   Given a single moves and the state of the robots, simulate the moves taken by the robots. As fast as possible.
-  """
-  def solver_make_move(robots, board, move) do
-        
-    new_pos =
-      case Enum.find(robots, fn r -> r.color == move.color end) do
-        nil -> nil
-        mr -> calculate_new_pos(mr.pos, move.direction, robots, board)
-      end
 
-    robots = Enum.map(robots, fn robot ->
-      if robot.color == move.color do
-        %{robot | pos: new_pos}
-      else
-        robot
-      end
+  Return {soln_found, new_target_pos, new_target_moves, new_extra_moves} #to do: update available_moves?
+  """
+  def solver_move_target_robot(target_robot, extra_robots, stopping_board, move, goal) do
+        
+    new_target_pos = solver_calculate_new_pos(target_robot, move, extra_robots, stopping_board)
+    soln_found = new_target_pos == goal
+
+    {soln_found, new_target_pos, extra_robots}
+    
+  end
+
+  @doc """
+  Given a single moves and the state of the robots, simulate the moves taken by the robots. As fast as possible.
+  return new child nodes for every move of the extra robot.
+  [{target_robot, [other_robots], [shortest-path-history]}]
+  """
+  def solver_move_extra_robots(target_robot, extra_robots, stopping_board, history) do
+
+    moves = [:up, :down, :left, :right]
+    ers = extra_robots
+          |> Enum.with_index()
+          |> Enum.flat_map(fn {r_pos, idx} ->
+            Enum.map(moves, fn m ->
+              new_robot_pos = solver_calculate_new_pos(r_pos, m, [target_robot | extra_robots], stopping_board)
+              new_extra_robots = List.replace_at( extra_robots, idx, new_robot_pos )
+              {target_robot, new_extra_robots, [ {idx, m} | history]}
+            end)
+
     end)
+
+    # new_pos =
+    #   case Enum.find(extra_robots, fn r -> r.color == move.color end) do
+    #     nil -> nil
+    #     mr -> calculate_new_pos(mr.pos, move.direction, extra_robots, board)
+    #   end
+
+    # Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end)
     
-    Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end)
+  end
+
+  defp solver_calculate_new_pos({x, y}, direction, robots, board) do
+    wall_coord = get_stopping_cell({x, y}, board, direction) # | get_robot_blocked_indices(%{x: x, y: y}, direction, robots)]
+    robot_coord = solver_get_stop_robots({x, y}, direction, robots)
+
+    case direction do
+      :up    -> {x, max(wall_coord, robot_coord)}
+      :down  -> {x, min(wall_coord, robot_coord)}
+      :left  -> {max(wall_coord, robot_coord), y}
+      :right -> {min(wall_coord, robot_coord), y}
+      _ -> {x, y}
+    end
     
+  end
+
+  # Given a robot position and direction, return the first index of any robot that the moving robot will hit.
+  defp solver_get_stop_robots({rx, ry}, direction, robots) do
+
+    case direction do
+      :up ->
+        robots
+        |> Enum.reduce(0, fn {tx, ty}, acc ->
+            cond do
+              tx == rx && ty < ry -> max(acc, ty + 1)
+              true -> acc
+            end
+          end)
+
+      :down ->
+        robots
+        |> Enum.reduce(15, fn {tx, ty}, acc ->
+            cond do
+              tx == rx && ty > ry -> min(acc, ty - 1)
+              true -> acc
+            end
+          end)
+
+      :left ->
+        robots
+        |> Enum.reduce(0, fn {tx, ty}, acc ->
+            cond do
+               tx < rx && ty == ry -> max(acc, tx + 1)
+              true -> acc
+            end
+          end)
+
+      :right ->
+        robots
+        |> Enum.reduce(15, fn {tx, ty}, acc ->
+            cond do
+               tx > rx && ty == ry -> min(acc, tx - 1)
+              true -> acc
+            end
+          end)
+    end
   end
 
 
