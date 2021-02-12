@@ -41,7 +41,8 @@ defmodule Gameboy.RicochetRobots.Main do
             # storage for the solution robot positions
             best_solution_moves: "",
             # store goal indices after they have been used...
-            goal_history: []
+            goal_history: [],
+            solver_enabled: true
 
   @type t :: %{
           room_name: String.t(),
@@ -61,7 +62,8 @@ defmodule Gameboy.RicochetRobots.Main do
           best_solution_player_name: String.t(),
           best_solution_robots: [robot_t],
           best_solution_moves: String.t(),
-          goal_history: [integer]
+          goal_history: [integer],
+          solver_enabled: boolean
         }
 
   @typedoc "Position: { row: Integer, col: Integer }"
@@ -168,15 +170,17 @@ defmodule Gameboy.RicochetRobots.Main do
           best_solution_moves: ""
         }
       end
-      
-    Room.system_chat(state.room_name, "Spawning the solver.")
-    Task.async(fn -> spawn_solver(new_state) end )
+    
 
     broadcast_visual_board(new_state)
     broadcast_robots(new_state)
     broadcast_goals(new_state)
     broadcast_clock(new_state)
     broadcast_clear_moves(new_state)
+
+    if state.solver_enabled do
+      Task.async(fn -> spawn_solver(new_state) end )
+    end
 
     new_state
   end
@@ -198,11 +202,11 @@ defmodule Gameboy.RicochetRobots.Main do
       %{symbol: active_symbol, pos: active_pos} -> 
         active_color = active_symbol |> GameLogic.color_to_symbol()
         
-        {[target_robot | _], extra_robots} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
+        {[target_robot_obj | _], extra_robots_obj} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
 
         goal = Enum.find(state.goals, fn %{active: a} -> a end)
-        target_robot = {target_robot.pos.x, target_robot.pos.y}
-        extra_robots = extra_robots |> Enum.map(fn %{pos: p} -> {p.x, p.y} end)
+        target_robot = {target_robot_obj.pos.x, target_robot_obj.pos.y}
+        extra_robots = extra_robots_obj |> Enum.map(fn %{pos: p} -> {p.x, p.y} end)
 
         init_queue = :queue.new()
         init_queue = :queue.in({ target_robot, extra_robots, [] }, init_queue)
@@ -211,10 +215,28 @@ defmodule Gameboy.RicochetRobots.Main do
         # compute the stopping points for each cell and direction.
         stopping_board = GameLogic.precompute_stopping_cells(state.boundary_board)
 
-        Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect {goal.pos.x, goal.pos.y}}." )
-        Logger.info( "[Solver] initialized. Other robots are: #{inspect extra_robots}." )
+        Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect {goal.pos.x, goal.pos.y}}. Other robots are: #{inspect extra_robots}." )
        
-        bfs(init_queue, MapSet.new, [], empty_next_layer_queue, 0, {goal.pos.x, goal.pos.y}, stopping_board)
+        case bfs(init_queue, MapSet.new, [], empty_next_layer_queue, 0, {goal.pos.x, goal.pos.y}, stopping_board) do
+          {:bfs_success, history} ->
+            colormap = extra_robots_obj
+                       |> Enum.map(fn %{color: c} -> c  end)
+            history_str = history
+                          |> Enum.reverse()
+                          |> Enum.map(fn m ->
+                            case m do
+                              {id, d} -> {Enum.at(colormap, id), d}
+                              d -> {target_robot_obj.color, d}
+                            end
+                          end)
+            robots_moved = Enum.map(history_str, fn {c, _d} -> c end) |> Enum.uniq |> length
+            Logger.info( "[Solver] Success! #{inspect length(history)} moves, #{inspect robots_moved} robots: #{inspect history_str}." )
+            Room.system_chat(state.room_name, "Solver has completed.")
+
+          status ->
+            Logger.info("[Solver] has completed with status #{status}.")
+        end
+
 
       _ -> :solver_err_no_goals
 
@@ -244,12 +266,11 @@ defmodule Gameboy.RicochetRobots.Main do
     
     case :queue.out(queue) do
       {:empty, {[], []}} ->
-        Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
+        # Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
         empty_next_layer_queue = :queue.new()
         bfs(next_layer, discovered_nodes, history, empty_next_layer_queue, num_moves+1, goal, stopping_board)
 
       {{:value, {active_robot, extra_robots, history}}, qtail} ->
-        # get all valid moves and add them as children to the `next_layer` of the graph
 
         # first test active_robot because if there is a solution, this will be the fastest way.
         new_nodes = [:up, :down, :left, :right] # to do , move this into move_target_robot
@@ -258,8 +279,7 @@ defmodule Gameboy.RicochetRobots.Main do
                     end)
         case Enum.find( new_nodes, nil, fn {{soln_found, _, _}, _} -> soln_found end) do
           {{_soln_found, _active_robot, _extra_robots}, history} -> 
-            Logger.info( "[BFS] success!!!!!!!!!!!!!!!!! #{inspect Enum.reverse(history)}." )
-            :SUCCESS
+            {:bfs_success, history}
           nil -> 
             # active robot has no solution so let's get add all the child nodes to those found by moving extra_robots.
             new_nodes = new_nodes |> Enum.map(fn {{_, ar, ers}, h} -> {ar, ers, h} end)
@@ -268,8 +288,9 @@ defmodule Gameboy.RicochetRobots.Main do
             all_new_nodes = new_nodes ++ more_new_nodes
 
             {discovered_nodes, next_queue} = Enum.reduce(all_new_nodes, {discovered_nodes, next_layer}, fn {ar, ers, h}, {discnodes, queue} ->
-                case MapSet.member?(discovered_nodes, {ar, ers}) do
-                  false -> {MapSet.put(discnodes, {ar, ers}), :queue.in({ar, ers, h}, queue)}
+                sorted_ers = Enum.sort(ers)
+                case MapSet.member?(discovered_nodes, {ar, sorted_ers}) do
+                  false -> {MapSet.put(discnodes, {ar, sorted_ers}), :queue.in({ar, ers, h}, queue)}
                   _ -> {discnodes, queue}
                 end
               end)
@@ -277,9 +298,6 @@ defmodule Gameboy.RicochetRobots.Main do
             bfs(qtail, discovered_nodes, history, next_queue, num_moves, goal, stopping_board)
         end
 
-        # Logger.info( "[BFS] #{inspect new_nodes}." )
-
-        
     end
   end
 
@@ -441,8 +459,6 @@ defmodule Gameboy.RicochetRobots.Main do
 
   # Returned with a message (status) from the solver
   def handle_info({_pid, status}, state) do
-    Logger.info("[Solver] has completed with status #{status}.")
-    Room.system_chat(state.room_name, "Solver has completed.")
     {:noreply, state}
   end
 
