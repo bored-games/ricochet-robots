@@ -11,12 +11,11 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   # Given a robot position and direction, return the relevant index of the
   # first wall the robot will hit.
   def precompute_stopping_cells(board) do
-    stopping_cells = for r <- 0..15, into: %{}, do: { r, (for c <- 0..15, into: %{}, do: {c, populate_stopping_cell({c, r}, board)}) }
+    for r <- 0..15, into: %{}, do: { r, (for c <- 0..15, into: %{}, do: {c, populate_stopping_cell({c, r}, board)}) }
   end
 
-  @doc """
-  Given a starting position and a bounadry board, pre-compute the [up, down, left, right] stopping cells based on walls
-  """
+
+  # Given a starting position and a bounadry board, pre-compute the [up, down, left, right] stopping cells based on walls
   defp populate_stopping_cell({x, y}, board) do
     bb_pos = %{row: round(2 * y + 1), col: round(2 * x + 1)}
 
@@ -62,11 +61,11 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   @doc """
   Return whether the robot that matches the goal color is at the active goal.
   """
-  @spec check_solution([Main.robot_t()], [Main.goal_t()]) :: boolean()
+  @spec check_solution([Main.robot_t()], [Main.goal_t()]) :: boolean
   def check_solution(robots, goals) do
     %{symbol: active_symbol, pos: active_pos} = Enum.find(goals, fn %{active: a} -> a end)
 
-    active_color = active_symbol |> color_to_symbol()
+    active_color = active_symbol |> symbol_to_color_atom
 
     Enum.any?(robots, fn %{color: c, pos: p} ->
       c == active_color && p == active_pos
@@ -79,6 +78,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   Return {soln_found, new_target_pos, new_target_moves, new_extra_moves} #to do: update available_moves?
   """
+  @spec solver_move_target_robot({integer, integer}, atom, [{integer, integer}], map(), {integer, integer}) :: {boolean, {integer, integer}, [{integer, integer}]}
   def solver_move_target_robot(target_robot, extra_robots, stopping_board, move, goal) do
         
     new_target_pos = solver_calculate_new_pos(target_robot, move, extra_robots, stopping_board)
@@ -96,14 +96,14 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   def solver_move_extra_robots(target_robot, extra_robots, stopping_board, history) do
 
     moves = [:up, :down, :left, :right]
-    ers = extra_robots
-          |> Enum.with_index()
-          |> Enum.flat_map(fn {r_pos, idx} ->
-            Enum.map(moves, fn m ->
-              new_robot_pos = solver_calculate_new_pos(r_pos, m, [target_robot | extra_robots], stopping_board)
-              new_extra_robots = List.replace_at( extra_robots, idx, new_robot_pos )
-              {target_robot, new_extra_robots, [ {idx, m} | history]}
-            end)
+    extra_robots
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {r_pos, idx} ->
+        Enum.map(moves, fn m ->
+          new_robot_pos = solver_calculate_new_pos(r_pos, m, [target_robot | extra_robots], stopping_board)
+          new_extra_robots = List.replace_at( extra_robots, idx, new_robot_pos )
+          {target_robot, new_extra_robots, [ {idx, m} | history]}
+        end)
 
     end)
 
@@ -615,8 +615,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Add L
-  @spec add_L1(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
-          {map, [Main.goal_t()]}
+  @spec add_L1(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) :: {map, [Main.goal_t()]}
   defp add_L1(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col + 1], 1)
@@ -645,8 +644,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 180 deg
-  @spec add_L3(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
-          {map, [Main.goal_t()]}
+  @spec add_L3(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) :: {map, [Main.goal_t()]}
   defp add_L3(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
@@ -660,8 +658,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 270 deg CW
-  @spec add_L4(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
-          {map, [Main.goal_t()]}
+  @spec add_L4(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) :: {map, [Main.goal_t()]}
   defp add_L4(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
@@ -740,9 +737,11 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   Given a list of moves and the state of the robots, simulate the moves taken
   by the robots.
   """
+  @spec get_svg_url(Main.t()) :: String.t()
   def get_svg_url(state) do
     goal = Enum.find(state.goals, nil, fn %{active: a} -> a end)
     goal_str = "#{String.downcase(String.at(goal.symbol, 0))},#{goal.pos.x+16*goal.pos.y}"
+    Logger.debug("G: #{inspect goal} and #{inspect goal_str}")
     rr = Enum.find(state.robots, nil, fn %{color: c} -> c == :red end)
     rr = "#{rr.pos.x + 16*rr.pos.y}"
     rg = Enum.find(state.robots, nil, fn %{color: c} -> c == :green end)
@@ -754,14 +753,11 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     rs = Enum.find(state.robots, nil, fn %{color: c} -> c == :silver end)
     rs = "#{rs.pos.x + 16*rs.pos.y}"
     bs = Enum.join(List.flatten(state.visual_board), ",")
-    # ms = for m <- state.best_solution_moves, into: "", do: encode_move(m)
-    ms = state.best_solution_moves
+    #{ms, _rs} = state.best_solution
+    ms = state.best_solution_string
     "https://bored-games.github.io/robots-svg/solution.svg?goal=#{goal_str}&red=#{rr}&green=#{rg}&blue=#{rb}&yellow=#{ry}&silver=#{rs}&b=#{bs}#{ms}&theme=dark"
   end
 
-  defp encode_move(move) do
-    "&m=#{String.downcase(String.at(move["color"], 0))},1,2,3,4"
-  end
 
   # TODO: write this with position_t type
   @doc """
@@ -778,7 +774,8 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   @blue_symbols MapSet.new(["BlueMoon", "BluePlanet", "BlueCross", "BlueGear"])
   @yellow_symbols MapSet.new(["YellowMoon", "YellowPlanet", "YellowCross", "YellowGear"])
 
-  def color_to_symbol(color) do
+  @spec symbol_to_color_atom(String.t()) :: atom
+  def symbol_to_color_atom(color) do
     cond do
       MapSet.member?(@red_symbols, color) -> :red
       MapSet.member?(@green_symbols, color) -> :green

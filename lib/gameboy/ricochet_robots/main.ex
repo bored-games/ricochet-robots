@@ -10,6 +10,7 @@ defmodule Gameboy.RicochetRobots.Main do
 
   alias Gameboy.{Room, GameSupervisor}
   alias Gameboy.RicochetRobots.{GameLogic}
+  alias Gameboy.{SocketHandler}
 
   defstruct room_name: nil,
             boundary_board: nil,
@@ -30,19 +31,22 @@ defmodule Gameboy.RicochetRobots.Main do
             current_timer: 0,
             # boolean: has solution been found
             solution_found: false,
-            # number of moves in current best solution
-            solution_moves: 0,
-            # number of robots in current best solution
-            solution_robots: 0,
+            # number of {moves, robots} in current best human solution
+            best_solution: nil,
             # user id of current best solution
             best_solution_player_name: nil,
             # storage for the solution robot positions
             best_solution_robots: [],
-            # storage for the solution robot positions
-            best_solution_moves: "",
+            # store the best human solution for displaying on SVG
+            best_solution_string: "",
             # store goal indices after they have been used...
             goal_history: [],
-            solver_enabled: true
+            # can be disabled to save resources
+            solver_enabled: true,
+            # number of {moves, robots} in optimal solution
+            solver_solution: nil,
+            # store the solver's optimal solution for displaying on SVG 
+            solver_solution_string: ""
 
   @type t :: %{
           room_name: String.t(),
@@ -57,13 +61,14 @@ defmodule Gameboy.RicochetRobots.Main do
           current_countdown: integer,
           current_timer: integer,
           solution_found: boolean,
-          solution_moves: integer,
-          solution_robots: integer,
+          best_solution: {integer, integer} | nil,
           best_solution_player_name: String.t(),
           best_solution_robots: [robot_t],
-          best_solution_moves: String.t(),
+          best_solution_string: String.t(),
           goal_history: [integer],
-          solver_enabled: boolean
+          solver_enabled: boolean,
+          solver_solution: {integer, integer} | nil,
+          solver_solution_string: String.t()
         }
 
   @typedoc "Position: { row: Integer, col: Integer }"
@@ -147,12 +152,13 @@ defmodule Gameboy.RicochetRobots.Main do
           current_countdown: state.setting_countdown,
           current_timer: 0,
           solution_found: false,
-          solution_moves: 0,
-          solution_robots: 0,
+          best_solution: nil,
           best_solution_player_name: nil,
           best_solution_robots: [],
-          best_solution_moves: "",
-          goal_history: []
+          best_solution_string: "",
+          goal_history: [],
+          solver_solution: nil,
+          solver_solution_string: ""
       }
       else
         goals = GameLogic.choose_new_goal(state.goals)
@@ -163,11 +169,12 @@ defmodule Gameboy.RicochetRobots.Main do
           current_countdown: state.setting_countdown,
           current_timer: 0,
           solution_found: false,
-          solution_moves: 0,
-          solution_robots: 0,
+          best_solution: nil,
           best_solution_player_name: nil,
           best_solution_robots: [],
-          best_solution_moves: ""
+          best_solution_string: "",
+          solver_solution: nil,
+          solver_solution_string: ""
         }
       end
     
@@ -199,8 +206,8 @@ defmodule Gameboy.RicochetRobots.Main do
    
     # Logger.info( "[Solver] #{inspect state.robots}." )
     case Enum.find(state.goals, fn %{active: a} -> a end) do
-      %{symbol: active_symbol, pos: active_pos} -> 
-        active_color = active_symbol |> GameLogic.color_to_symbol()
+      %{symbol: active_symbol} -> 
+        active_color = active_symbol |> GameLogic.symbol_to_color_atom()
         
         {[target_robot_obj | _], extra_robots_obj} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
 
@@ -231,10 +238,12 @@ defmodule Gameboy.RicochetRobots.Main do
                           end)
             robots_moved = Enum.map(history_str, fn {c, _d} -> c end) |> Enum.uniq |> length
             Logger.info( "[Solver] Success! #{inspect length(history)} moves, #{inspect robots_moved} robots: #{inspect history_str}." )
-            Room.system_chat(state.room_name, "Solver has completed.")
+            Room.system_message(state.room_name, %{}, "solver_complete")
+            {:solver_success, {length(history), robots_moved}}
 
           status ->
             Logger.info("[Solver] has completed with status #{status}.")
+            status
         end
 
 
@@ -251,12 +260,9 @@ defmodule Gameboy.RicochetRobots.Main do
   # Next_Layer is the set of nodes in the next layer, confirmed not to be solutions already
   # Number_Moves just keeps track of the layer because it's easy.
 
-  defp bfs([], _history, [], _, _goal, _stopping_board) do
-    :bfs_failed
-  end
 
-  defp bfs(_neighbors, _history, _next_layer, 15, _goal, _stopping_board) do
-    Logger.info( "[BFS] Max depth reached." )
+  defp bfs(_neighbors, discovered_nodes, _history, _next_layer, 15, _goal, _stopping_board) do
+    Logger.info( "[BFS] Max depth reached. Discovered nodes = #{inspect length(discovered_nodes)}" )
     :bfs_max_depth_reached
   end
 
@@ -313,7 +319,8 @@ defmodule Gameboy.RicochetRobots.Main do
     :ok
   end
 
-    
+  
+  @spec handle_game_action(String.t(), String.t(), SocketHandler.t()) :: iodata() | :error_unknown_game_action
   def handle_game_action(action, content, socket_state) do
     case action do
       "submit_movelist" -> 
@@ -418,22 +425,22 @@ defmodule Gameboy.RicochetRobots.Main do
 
     return_state =
       if state.solution_found do
-        if num_moves < state.solution_moves || (num_moves == state.solution_moves && num_robots > state.solution_robots) do
+        {current_solution_moves, current_solution_robots} = state.best_solution
+        if num_moves < current_solution_moves || (num_moves == current_solution_moves && num_robots > current_solution_robots) do
           Room.system_chat(room_name, "An improved, #{num_robots}-robot, #{num_moves}-move solution has been found.")
 
           %{ state
-             | solution_moves: num_moves,
-               solution_robots: num_robots,
+             | best_solution: {num_moves, num_robots},
                best_solution_player_name: player_name,
                best_solution_robots: moved_robots,
-               best_solution_moves: verbose_move_list
+               best_solution_string: verbose_move_list
            }
         else
           state
         end
       else
         Room.system_chat(room_name, "A #{num_robots}-robot, #{num_moves}-move solution has been found.")
-        %{ state | solution_found: true, solution_moves: num_moves, solution_robots: num_robots, best_solution_player_name: player_name, best_solution_robots: moved_robots, best_solution_moves: verbose_move_list }
+        %{ state | solution_found: true, best_solution: {num_moves, num_robots}, best_solution_player_name: player_name, best_solution_robots: moved_robots, best_solution_string: verbose_move_list }
       end
 
     # return robots to original locations, but update the state with new solution
@@ -458,8 +465,8 @@ defmodule Gameboy.RicochetRobots.Main do
   end
 
   # Returned with a message (status) from the solver
-  def handle_info({_pid, status}, state) do
-    {:noreply, state}
+  def handle_info({_pid, {_status, {num_moves, robots_moved}}}, state) do
+    {:noreply, %{state | solver_solution: {num_moves, robots_moved}}}
   end
 
   # Returned after solver dies, whether successfully or not
@@ -468,12 +475,33 @@ defmodule Gameboy.RicochetRobots.Main do
   end
 
   def finish_round(state) do
-    if state.solution_robots > 1 || state.solution_moves >= state.setting_min_moves do
+    {best_solution_moves, best_solution_robots} = state.best_solution
+    solver_string =
+      if not state.solver_enabled do
+        ""
+      else
+        case state.solver_solution do
+          nil -> " You beat the solver! Incredible. How did you do it?"
+          {solver_moves, solver_robots} ->
+            cond do
+              solver_moves == best_solution_moves and solver_robots == best_solution_robots ->
+                " This was the optimal solution!"
+              solver_moves > best_solution_moves ->
+                " You beat the solver's #{solver_robots}-robot, #{solver_moves}-move solution! Incredible."
+              solver_moves == best_solution_moves and solver_robots > best_solution_robots ->
+                " You beat the solver's #{solver_robots}-robot, #{solver_moves}-move solution! Incredible."
+              true ->
+                " The optimal solution was #{solver_robots}-robots, #{solver_moves}-moves!"
+            end
+        end
+      end
+
+    if best_solution_robots > 1 || best_solution_moves >= state.setting_min_moves do
       Room.add_points(state.room_name, state.best_solution_player_name, 1)
-      Room.system_chat(state.room_name, "#{state.best_solution_player_name} won with a #{state.solution_robots}-robot, #{state.solution_moves}-move solution.")
+      Room.system_chat(state.room_name, "#{state.best_solution_player_name} won with a #{best_solution_robots}-robot, #{best_solution_moves}-move solution." <> solver_string)
       Room.broadcast_scoreboard(state.room_name)
     else
-      Room.system_chat(state.room_name, "#{state.best_solution_player_name} found a #{state.solution_robots}-robot, #{state.solution_moves}-move solution but receives no points.")
+      Room.system_chat(state.room_name, "#{state.best_solution_player_name} found a #{best_solution_robots}-robot, #{best_solution_moves}-move solution but receives no points.")
     end
     Room.system_message(state.room_name, %{url: GameLogic.get_svg_url(state)}, "system_chat_svg")
 
