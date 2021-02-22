@@ -22,4 +22,7 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 ricochet_robots-*.tar
 
+# Local database connection parameters
+config/config.exs
+
 node_modules

@@ -9,7 +9,7 @@ defmodule Gameboy.RicochetRobots.Main do
   require Logger
 
   alias Gameboy.{Room, GameSupervisor}
-  alias Gameboy.RicochetRobots.{GameLogic}
+  alias Gameboy.RicochetRobots.{GameLogic, Helper, Puzzle, Repo}
   alias Gameboy.{SocketHandler}
 
   defstruct room_name: nil,
@@ -46,7 +46,9 @@ defmodule Gameboy.RicochetRobots.Main do
             # number of {moves, robots} in optimal solution
             solver_solution: nil,
             # store the solver's optimal solution for displaying on SVG 
-            solver_solution_string: ""
+            solver_solution_string: "",
+            # solver continues running to generate puzzles
+            solver_only: true
 
   @type t :: %{
           room_name: String.t(),
@@ -68,7 +70,8 @@ defmodule Gameboy.RicochetRobots.Main do
           goal_history: [integer],
           solver_enabled: boolean,
           solver_solution: {integer, integer} | nil,
-          solver_solution_string: String.t()
+          solver_solution_string: String.t(),
+          solver_only: boolean
         }
 
   @typedoc "Position: { row: Integer, col: Integer }"
@@ -78,10 +81,10 @@ defmodule Gameboy.RicochetRobots.Main do
   @type goal_t :: %{pos: position_t, symbol: String.t(), active: boolean}
 
   @typedoc "Move"
-  @type move_t :: %{color: String.t(), direction: String.t()}
+  @type move_t :: %{color: atom, direction: atom}
 
   @typedoc "Robot: { pos: position, color: String, moves: [move] }"
-  @type robot_t :: %{pos: position_t, color: String.t(), moves: [move_t]}
+  @type robot_t :: %{pos: position_t, color: atom, moves: [move_t]}
 
   @typedoc "Erlang's queue for solver"
   @type queue() :: :queue.queue()
@@ -185,6 +188,9 @@ defmodule Gameboy.RicochetRobots.Main do
     broadcast_clock(new_state)
     broadcast_clear_moves(new_state)
 
+
+
+
     if state.solver_enabled do
       Task.async(fn -> spawn_solver(new_state) end )
     end
@@ -202,7 +208,6 @@ defmodule Gameboy.RicochetRobots.Main do
   """
   @spec spawn_solver(__MODULE__.t()) :: :ok
   def spawn_solver(state) do
-
    
     # Logger.info( "[Solver] #{inspect state.robots}." )
     case Enum.find(state.goals, fn %{active: a} -> a end) do
@@ -210,6 +215,7 @@ defmodule Gameboy.RicochetRobots.Main do
         active_color = active_symbol |> GameLogic.symbol_to_color_atom()
         
         {[target_robot_obj | _], extra_robots_obj} = Enum.split_with(state.robots, fn %{color: c} -> c == active_color end)
+
 
         goal = Enum.find(state.goals, fn %{active: a} -> a end)
         target_robot = {target_robot_obj.pos.x, target_robot_obj.pos.y}
@@ -222,7 +228,7 @@ defmodule Gameboy.RicochetRobots.Main do
         # compute the stopping points for each cell and direction.
         stopping_board = GameLogic.precompute_stopping_cells(state.boundary_board)
 
-        Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect {goal.pos.x, goal.pos.y}}. Other robots are: #{inspect extra_robots}." )
+        # Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect {goal.pos.x, goal.pos.y}}. Other robots are: #{inspect extra_robots}." )
        
         case bfs(init_queue, MapSet.new, [], empty_next_layer_queue, 0, {goal.pos.x, goal.pos.y}, stopping_board) do
           {:bfs_success, history} ->
@@ -232,13 +238,55 @@ defmodule Gameboy.RicochetRobots.Main do
                           |> Enum.reverse()
                           |> Enum.map(fn m ->
                             case m do
-                              {id, d} -> {Enum.at(colormap, id), d}
-                              d -> {target_robot_obj.color, d}
+                              {id, d} -> %{color: Enum.at(colormap, id), direction: d}
+                              d -> %{color: target_robot_obj.color, direction: d}
                             end
                           end)
-            robots_moved = Enum.map(history_str, fn {c, _d} -> c end) |> Enum.uniq |> length
-            Logger.info( "[Solver] Success! #{inspect length(history)} moves, #{inspect robots_moved} robots: #{inspect history_str}." )
-            Room.system_message(state.room_name, %{}, "solver_complete")
+            robots_moved = Enum.map(history_str, fn %{color: c} -> c end) |> Enum.uniq |> length
+            moves_moved = length(history)
+            # Logger.info( "[Solver] Success! #{inspect moves_moved} moves, #{inspect robots_moved} robots: #{inspect history_str}." )
+            # Room.system_message(state.room_name, %{}, "solver_complete")
+
+            
+            {_moved_robots, verbose_move_list} = GameLogic.make_move(state.robots, state.boundary_board, "", history_str)
+            robots_map = for %{color: c, pos: p} <- state.robots, into: %{}, do: {c, Helper.pos_tuple_to_uint(p)}
+            # Insert it into the Repo
+            puzzle = %Puzzle{}
+
+            difficulty = cond do
+              moves_moved + robots_moved > 23 -> 7
+              moves_moved + robots_moved > 20 -> 6
+              moves_moved + robots_moved > 17 -> 5
+              moves_moved + robots_moved > 14 -> 4
+              moves_moved + robots_moved > 11 -> 3
+              moves_moved + robots_moved >  8 -> 2
+              moves_moved + 2*robots_moved >  7 -> 1
+              true                            -> 0
+            end
+
+            if (difficulty > 2) do
+              changeset = Puzzle.changeset(puzzle, %{boundary_board: Enum.join(List.flatten(state.visual_board), ","),
+                                                    red_pos: robots_map[:red],
+                                                    yellow_pos: robots_map[:yellow],
+                                                    green_pos: robots_map[:green],
+                                                    blue_pos: robots_map[:blue],
+                                                    silver_pos: robots_map[:silver],
+                                                    goal_color: GameLogic.symbol_to_color_string(active_symbol),
+                                                    goal_pos: Helper.pos_tuple_to_uint({goal.pos.x, goal.pos.y}),
+                                                    solution_str: verbose_move_list,
+                                                    solution_robots: robots_moved,
+                                                    solution_moves: moves_moved,
+                                                    difficulty: difficulty})
+              case Repo.insert(changeset) do
+                {:ok, _puzzle} ->
+                  Logger.debug("Saved the puzzle! #{inspect moves_moved} moves, #{inspect robots_moved}, difficulty: #{difficulty}." )
+                {:error, changeset} ->
+                  Logger.debug("Oh no! There was an error with #{inspect changeset.errors}")
+              end
+            else
+                  Logger.debug(" ... skipping ... #{inspect moves_moved} moves, #{inspect robots_moved}, difficulty: #{difficulty}." )
+            end
+
             {:solver_success, {length(history), robots_moved}}
 
           status ->
@@ -261,8 +309,8 @@ defmodule Gameboy.RicochetRobots.Main do
   # Number_Moves just keeps track of the layer because it's easy.
 
 
-  defp bfs(_neighbors, discovered_nodes, _history, _next_layer, 15, _goal, _stopping_board) do
-    Logger.info( "[BFS] Max depth reached. Discovered nodes = #{inspect length(discovered_nodes)}" )
+  defp bfs(_neighbors, discovered_nodes, _history, _next_layer, 22, _goal, _stopping_board) do
+    Logger.info( "[BFS] Max depth (22) reached.}" )
     :bfs_max_depth_reached
   end
 
@@ -277,22 +325,20 @@ defmodule Gameboy.RicochetRobots.Main do
         bfs(next_layer, discovered_nodes, history, empty_next_layer_queue, num_moves+1, goal, stopping_board)
 
       {{:value, {active_robot, extra_robots, history}}, qtail} ->
-
         # first test active_robot because if there is a solution, this will be the fastest way.
         new_nodes = [:up, :down, :left, :right] # to do , move this into move_target_robot
                     |> Enum.map(fn m ->
                       {GameLogic.solver_move_target_robot(active_robot, extra_robots, stopping_board, m, goal), [m | history] }
                     end)
-        case Enum.find( new_nodes, nil, fn {{soln_found, _, _}, _} -> soln_found end) do
+        case Enum.find(new_nodes, nil, fn {{soln_found, _, _}, _} -> soln_found end) do
           {{_soln_found, _active_robot, _extra_robots}, history} -> 
             {:bfs_success, history}
           nil -> 
             # active robot has no solution so let's get add all the child nodes to those found by moving extra_robots.
             new_nodes = new_nodes |> Enum.map(fn {{_, ar, ers}, h} -> {ar, ers, h} end)
-            
             more_new_nodes = GameLogic.solver_move_extra_robots(active_robot, extra_robots, stopping_board, history)
-            all_new_nodes = new_nodes ++ more_new_nodes
-
+            sorted_more_new_nodes = Enum.sort(more_new_nodes, &(count_extra_robots(&1) >= count_extra_robots(&2)))
+            all_new_nodes = new_nodes ++ sorted_more_new_nodes
             {discovered_nodes, next_queue} = Enum.reduce(all_new_nodes, {discovered_nodes, next_layer}, fn {ar, ers, h}, {discnodes, queue} ->
                 sorted_ers = Enum.sort(ers)
                 case MapSet.member?(discovered_nodes, {ar, sorted_ers}) do
@@ -305,6 +351,11 @@ defmodule Gameboy.RicochetRobots.Main do
         end
 
     end
+  end
+
+  # for sorting necessary in breaking ties : assign value based on number of robots that are not the target robot;
+  def count_extra_robots({ar, ers, h}) do
+    ers |> Enum.filter(&match?({_, _}, &1)) |> Enum.uniq_by(fn {n, _} -> n end) |> length
   end
 
   @doc """
@@ -466,7 +517,14 @@ defmodule Gameboy.RicochetRobots.Main do
 
   # Returned with a message (status) from the solver
   def handle_info({_pid, {_status, {num_moves, robots_moved}}}, state) do
-    {:noreply, %{state | solver_solution: {num_moves, robots_moved}}}
+    
+    new_state = if state.solver_only do
+        new_round(%{ state | current_puzzles_until_new: 0 })
+      else
+        %{state | solver_solution: {num_moves, robots_moved}}
+      end
+
+    {:noreply, new_state}
   end
 
   # Returned after solver dies, whether successfully or not

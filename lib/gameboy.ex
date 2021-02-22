@@ -13,6 +13,7 @@ defmodule Gameboy do
           port: 56765
         ]
       ),
+      Gameboy.RicochetRobots.Repo,
       Registry.child_spec(
         keys: :unique,
         name: Registry.RoomRegistry

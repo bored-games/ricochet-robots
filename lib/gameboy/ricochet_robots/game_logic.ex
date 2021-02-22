@@ -89,7 +89,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   @doc """
-  Given a single moves and the state of the robots, simulate the moves taken by the robots. As fast as possible.
+  Given a single move and the state of the robots, simulate the moves taken by the robots. As fast as possible.
   return new child nodes for every move of the extra robot.
   [{target_robot, [other_robots], [shortest-path-history]}]
   """
@@ -187,21 +187,20 @@ defmodule Gameboy.RicochetRobots.GameLogic do
  
 
   def make_move(robots, board, verbose_list, [move | tailmoves]) do
-    atom_move = move |> Map.new(fn {k, v} -> {String.to_atom(k), String.to_atom(v)} end)
-        
+    
     {new_pos, verbose_move} =
-      case Enum.find(robots, nil, fn r -> r.color == atom_move.color end) do
+      case Enum.find(robots, nil, fn r -> r.color == move.color end) do
         nil -> 
-         # Logger.info("Could not find robot whose r color was #{inspect atom_move.color} in #{inspect robots}")
+         # Logger.info("Could not find robot whose r color was #{inspect move.color} in #{inspect robots}")
           {nil, ""}
         mr -> 
-          new_pos = calculate_new_pos(mr.pos, atom_move.direction, robots, board)
+          new_pos = calculate_new_pos(mr.pos, move.direction, robots, board)
           verbose_move = "&m=#{String.downcase(String.at(Atom.to_string(mr.color), 0))},#{mr.pos.x},#{mr.pos.y},#{new_pos.x},#{new_pos.y}"
           {new_pos, verbose_move}
       end
 
     robots = Enum.map(robots, fn robot ->
-      if robot.color == atom_move.color do
+      if robot.color == move.color do
         %{robot | pos: new_pos}
       else
         robot
@@ -326,7 +325,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Given color, list of previous robots, add a single 'color' robot to an unoccupied square
-  @spec add_robot([Main.robot_t()], String.t()) :: [Main.robot_t()]
+  @spec add_robot([Main.robot_t()], atom) :: [Main.robot_t()]
   defp add_robot(robots, color) do
     robot = %{pos: rand_position(robots), color: color, moves: [:up, :left, :down, :right]}
     [robot | robots]
@@ -781,6 +780,16 @@ defmodule Gameboy.RicochetRobots.GameLogic do
       MapSet.member?(@green_symbols, color) -> :green
       MapSet.member?(@blue_symbols, color) -> :blue
       MapSet.member?(@yellow_symbols, color) -> :yellow
+    end
+  end
+
+  @spec symbol_to_color_string(String.t()) :: String.t()
+  def symbol_to_color_string(color) do
+    cond do
+      MapSet.member?(@red_symbols, color) -> "red"
+      MapSet.member?(@green_symbols, color) -> "green"
+      MapSet.member?(@blue_symbols, color) -> "blue"
+      MapSet.member?(@yellow_symbols, color) -> "yellow"
     end
   end
 end
