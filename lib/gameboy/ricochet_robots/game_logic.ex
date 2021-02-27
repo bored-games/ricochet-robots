@@ -5,7 +5,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   import Bitwise
   require Logger
-  alias Gameboy.RicochetRobots.{Main}
+  alias Gameboy.RicochetRobots.{Main, Utilities}
 
 
   # Given a robot position and direction, return the relevant index of the
@@ -46,7 +46,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   @doc """
   Get the stopping cell for a given direction
   """
-  def get_stopping_cell({x, y}, board, direction) do
+  def get_stopping_cell(%{x: x, y: y}, board, direction) do
     
     case direction do
       :up    -> elem(board[y][x], 0)
@@ -117,27 +117,29 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     
   end
 
-  defp solver_calculate_new_pos({x, y}, direction, robots, board) do
-    wall_coord = get_stopping_cell({x, y}, board, direction) # | get_robot_blocked_indices(%{x: x, y: y}, direction, robots)]
-    robot_coord = solver_get_stop_robots({x, y}, direction, robots)
+  defp solver_calculate_new_pos(pos, direction, robots, board) do
+    %{x: x, y: y} = Utilities.cell_index_to_map(pos)
+    wall_coord = get_stopping_cell(%{x: x, y: y}, board, direction) # | get_robot_blocked_indices(%{x: x, y: y}, direction, robots)]
+    robot_coord = solver_get_stop_robots(%{x: x, y: y}, direction, robots)
 
     case direction do
-      :up    -> {x, max(wall_coord, robot_coord)}
-      :down  -> {x, min(wall_coord, robot_coord)}
-      :left  -> {max(wall_coord, robot_coord), y}
-      :right -> {min(wall_coord, robot_coord), y}
-      _ -> {x, y}
+      :up    -> Utilities.cell_map_to_index(%{x: x, y: max(wall_coord, robot_coord)})
+      :down  -> Utilities.cell_map_to_index(%{x: x, y: min(wall_coord, robot_coord)})
+      :left  -> Utilities.cell_map_to_index(%{x: max(wall_coord, robot_coord), y: y})
+      :right -> Utilities.cell_map_to_index(%{x: min(wall_coord, robot_coord), y: y})
+      _ -> Utilities.cell_map_to_index(%{x: x, y: y})
     end
     
   end
 
   # Given a robot position and direction, return the first index of any robot that the moving robot will hit.
-  defp solver_get_stop_robots({rx, ry}, direction, robots) do
+  defp solver_get_stop_robots(%{x: rx, y: ry}, direction, robots) do
 
     case direction do
       :up ->
         robots
-        |> Enum.reduce(0, fn {tx, ty}, acc ->
+        |> Enum.reduce(0, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
             cond do
               tx == rx && ty < ry -> max(acc, ty + 1)
               true -> acc
@@ -146,7 +148,8 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
       :down ->
         robots
-        |> Enum.reduce(15, fn {tx, ty}, acc ->
+        |> Enum.reduce(15, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
             cond do
               tx == rx && ty > ry -> min(acc, ty - 1)
               true -> acc
@@ -155,7 +158,8 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
       :left ->
         robots
-        |> Enum.reduce(0, fn {tx, ty}, acc ->
+        |> Enum.reduce(0, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
             cond do
                tx < rx && ty == ry -> max(acc, tx + 1)
               true -> acc
@@ -164,7 +168,8 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
       :right ->
         robots
-        |> Enum.reduce(15, fn {tx, ty}, acc ->
+        |> Enum.reduce(15, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
             cond do
                tx > rx && ty == ry -> min(acc, tx - 1)
               true -> acc
@@ -194,8 +199,10 @@ defmodule Gameboy.RicochetRobots.GameLogic do
          # Logger.info("Could not find robot whose r color was #{inspect move.color} in #{inspect robots}")
           {nil, ""}
         mr -> 
-          new_pos = calculate_new_pos(mr.pos, move.direction, robots, board)
-          verbose_move = "&m=#{String.downcase(String.at(Atom.to_string(mr.color), 0))},#{mr.pos.x},#{mr.pos.y},#{new_pos.x},#{new_pos.y}"
+          old_pos_map = Utilities.cell_index_to_map(mr.pos)
+          new_pos_map = calculate_new_pos(old_pos_map, move.direction, robots, board)
+          verbose_move = "&m=#{String.downcase(String.at(Atom.to_string(mr.color), 0))},#{old_pos_map.x},#{old_pos_map.y},#{new_pos_map.x},#{new_pos_map.y}"
+          new_pos = Utilities.cell_map_to_index(new_pos_map)
           {new_pos, verbose_move}
       end
 
@@ -211,15 +218,16 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   end
 
-  defp calculate_new_pos(pos, direction, robots, board) do
-    new_coord = [get_wall_blocked_indices(pos, direction, board) | get_robot_blocked_indices(pos, direction, robots)]
+
+  defp calculate_new_pos(pos_map, direction, robots, board) do
+    new_coord = [get_wall_blocked_indices(pos_map, direction, board) | get_robot_blocked_indices(pos_map, direction, robots)]
 
     cond do
-      direction == :up    -> %{pos | y: round(Enum.max(new_coord))}
-      direction == :down  -> %{pos | y: round(Enum.min(new_coord))}
-      direction == :left  -> %{pos | x: round(Enum.max(new_coord))}
-      direction == :right -> %{pos | x: round(Enum.min(new_coord))}
-      true -> pos
+      direction == :up    -> %{pos_map | y: round(Enum.max(new_coord))}
+      direction == :down  -> %{pos_map | y: round(Enum.min(new_coord))}
+      direction == :left  -> %{pos_map | x: round(Enum.max(new_coord))}
+      direction == :right -> %{pos_map | x: round(Enum.min(new_coord))}
+      true -> pos_map
     end
   end
 
@@ -229,7 +237,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   # Note: Our walls are in a 33x33 array, while our robots are in a 16x16
   # array. We thus have to multiply by 2 to get the index of the walls.
   defp calculate_moves(robot, robots, board) do
-    %{x: robot_x, y: robot_y} = robot.pos
+    %{x: robot_x, y: robot_y} = Utilities.cell_index_to_map(robot.pos)
     %{x: board_x, y: board_y} = %{y: 2 * robot_y + 1, x: round(2 * robot_x + 1)}
     robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
 
@@ -243,8 +251,8 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   # Given a robot position and direction, return the relevant index of the
   # first wall the robot will hit.
-  defp get_wall_blocked_indices(vb_pos, direction, board) do
-    bb_pos = %{row: round(2 * vb_pos[:y] + 1), col: round(2 * vb_pos[:x] + 1)}
+  defp get_wall_blocked_indices(%{x: x, y: y}, direction, board) do
+    bb_pos = %{row: round(2 * y + 1), col: round(2 * x + 1)}
 
     case direction do
       :up ->
@@ -286,27 +294,30 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   # Given a robot position and direction, return a list of indices of any robots
   # that the active robot will hit.
-  defp get_robot_blocked_indices(robot_pos, direction, robots) do
-    %{x: rx, y: ry} = robot_pos
+  defp get_robot_blocked_indices(robot_pos = %{x: rx, y: ry}, direction, robots) do
 
     case direction do
       :up ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx == rx && yy < ry end)
         |> Enum.map(fn %{pos: %{y: yy}} -> yy + 1 end)
 
       :down ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx == rx && yy > ry end)
         |> Enum.map(fn %{pos: %{y: yy}} -> yy - 1 end)
 
       :left ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx < rx && yy == ry end)
         |> Enum.map(fn %{pos: %{x: xx}} -> xx + 1 end)
 
       :right ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx > rx && yy == ry end)
         |> Enum.map(fn %{pos: %{x: xx}} -> xx - 1 end)
     end
@@ -321,6 +332,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
       |> add_robot(:blue)
       |> add_robot(:yellow)
       |> add_robot(:silver)
+      
     Enum.map(robots, fn robot -> calculate_moves(robot, robots, boundary_board) end)
   end
 
@@ -331,16 +343,12 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     [robot | robots]
   end
 
-  @open_indices Enum.to_list(0..15) -- [7, 8]
+  @open_indices Enum.to_list(0..255) -- [119, 120, 135, 136]
 
   # Given a list of occupied positions, choose a new position.
-  @spec rand_position([Main.position_t()]) :: [Main.position_t()]
+  @spec rand_position([Main.robot_t()]) :: integer
   defp rand_position(robots) do
-    occupied = for(robot <- robots, do: robot.pos) |> Enum.to_list()
-
-    for(x <- @open_indices, y <- @open_indices, do: %{x: x, y: y})
-    |> Enum.to_list()
-    |> (&(&1 -- occupied)).()
+    @open_indices -- (robots |> Enum.map(fn %{pos: p} -> p end))
     |> Enum.random()
   end
 
@@ -718,7 +726,9 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   def rand_distant_pairs(rs, cs, avoids, cnt \\ 0) do
     {r, c} = {Enum.random(rs), Enum.random(cs)}
 
-    if cnt > 50 do
+    if cnt > 500 do
+      Logger.error("rand_distant_pairs failed too many times. Quitting.")
+      System.stop(-1)
       [{-1, -1} | avoids]
     else
       if Enum.any?(avoids, fn {r1, c1} -> dist_under_2?({r1, c1}, {r, c}) end) do
@@ -782,7 +792,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
       MapSet.member?(@yellow_symbols, color) -> :yellow
     end
   end
-
+  
   @spec symbol_to_color_string(String.t()) :: String.t()
   def symbol_to_color_string(color) do
     cond do

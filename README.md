@@ -1,15 +1,19 @@
 # Ricochet Robots
 
-A multiplayer browser-based implementation of a backend for Ricochet Robots.
+A multiplayer websocket-based implementation of a backend for Ricochet Robots and other games.
 
 This repository is meant to be paired with a frontend. For a frontend, see
 https://github.com/bored-games/robots-client.
 
 ## Deployment
+Install elixir dependencies by running from the root folder:
 `mix deps.get`
-and then
-~~`mix run --no-halt`~~
-`iex.bat -S run`
+
+A PostgreSQL instance is necessary for storing Ricochet Robot solutions. User/pass credentials must be edited in `config/config.exs`.
+The database can be created using `mix ecto.create` and `mix ecto.migrate` which follow the instructions in `priv/repo/migrations`.
+
+To run the server:
+`mix run --no-halt` or `iex.bat -S run`
 
 ## License
 

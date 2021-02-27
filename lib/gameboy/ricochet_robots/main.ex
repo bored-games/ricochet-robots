@@ -9,7 +9,7 @@ defmodule Gameboy.RicochetRobots.Main do
   require Logger
 
   alias Gameboy.{Room, GameSupervisor}
-  alias Gameboy.RicochetRobots.{GameLogic, Helper, Puzzle, Repo}
+  alias Gameboy.RicochetRobots.{GameLogic, Utilities, Puzzle, Repo}
   alias Gameboy.{SocketHandler}
 
   defstruct room_name: nil,
@@ -83,8 +83,8 @@ defmodule Gameboy.RicochetRobots.Main do
   @typedoc "Move"
   @type move_t :: %{color: atom, direction: atom}
 
-  @typedoc "Robot: { pos: position, color: String, moves: [move] }"
-  @type robot_t :: %{pos: position_t, color: atom, moves: [move_t]}
+  @typedoc "Robot: { pos: integer, color: String, moves: [move] }"
+  @type robot_t :: %{pos: integer, color: atom, moves: [move_t]}
 
   @typedoc "Erlang's queue for solver"
   @type queue() :: :queue.queue()
@@ -188,9 +188,6 @@ defmodule Gameboy.RicochetRobots.Main do
     broadcast_clock(new_state)
     broadcast_clear_moves(new_state)
 
-
-
-
     if state.solver_enabled do
       Task.async(fn -> spawn_solver(new_state) end )
     end
@@ -218,8 +215,9 @@ defmodule Gameboy.RicochetRobots.Main do
 
 
         goal = Enum.find(state.goals, fn %{active: a} -> a end)
-        target_robot = {target_robot_obj.pos.x, target_robot_obj.pos.y}
-        extra_robots = extra_robots_obj |> Enum.map(fn %{pos: p} -> {p.x, p.y} end)
+        goal_index = Utilities.cell_map_to_index(goal.pos)
+        target_robot = target_robot_obj.pos
+        extra_robots = extra_robots_obj |> Enum.map(fn %{pos: p} -> p end)
 
         init_queue = :queue.new()
         init_queue = :queue.in({ target_robot, extra_robots, [] }, init_queue)
@@ -228,9 +226,9 @@ defmodule Gameboy.RicochetRobots.Main do
         # compute the stopping points for each cell and direction.
         stopping_board = GameLogic.precompute_stopping_cells(state.boundary_board)
 
-        # Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect {goal.pos.x, goal.pos.y}}. Other robots are: #{inspect extra_robots}." )
+       # Logger.info( "[Solver] initialized. Must get #{inspect target_robot} to #{inspect goal_index}. Other robots are: #{inspect extra_robots}." )
        
-        case bfs(init_queue, MapSet.new, [], empty_next_layer_queue, 0, {goal.pos.x, goal.pos.y}, stopping_board) do
+        case bfs(init_queue, MapSet.new, [], empty_next_layer_queue, 0, goal_index, stopping_board) do
           {:bfs_success, history} ->
             colormap = extra_robots_obj
                        |> Enum.map(fn %{color: c} -> c  end)
@@ -249,10 +247,10 @@ defmodule Gameboy.RicochetRobots.Main do
 
             
             {_moved_robots, verbose_move_list} = GameLogic.make_move(state.robots, state.boundary_board, "", history_str)
-            robots_map = for %{color: c, pos: p} <- state.robots, into: %{}, do: {c, Helper.pos_tuple_to_uint(p)}
+            robots_map = for %{color: c, pos: p} <- state.robots, into: %{}, do: {c, p}
             # Insert it into the Repo
             puzzle = %Puzzle{}
-
+            
             difficulty = cond do
               moves_moved + robots_moved > 23 -> 7
               moves_moved + robots_moved > 20 -> 6
@@ -264,7 +262,7 @@ defmodule Gameboy.RicochetRobots.Main do
               true                            -> 0
             end
 
-            if (difficulty > 2) do
+            if (difficulty > 4) do
               changeset = Puzzle.changeset(puzzle, %{boundary_board: Enum.join(List.flatten(state.visual_board), ","),
                                                     red_pos: robots_map[:red],
                                                     yellow_pos: robots_map[:yellow],
@@ -272,7 +270,7 @@ defmodule Gameboy.RicochetRobots.Main do
                                                     blue_pos: robots_map[:blue],
                                                     silver_pos: robots_map[:silver],
                                                     goal_color: GameLogic.symbol_to_color_string(active_symbol),
-                                                    goal_pos: Helper.pos_tuple_to_uint({goal.pos.x, goal.pos.y}),
+                                                    goal_pos: goal_index,
                                                     solution_str: verbose_move_list,
                                                     solution_robots: robots_moved,
                                                     solution_moves: moves_moved,
@@ -320,7 +318,9 @@ defmodule Gameboy.RicochetRobots.Main do
     
     case :queue.out(queue) do
       {:empty, {[], []}} ->
-        # Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
+        if (num_moves >= 10) do
+          Logger.info( "[BFS] Entering depth #{num_moves + 1}." )
+        end
         empty_next_layer_queue = :queue.new()
         bfs(next_layer, discovered_nodes, history, empty_next_layer_queue, num_moves+1, goal, stopping_board)
 
@@ -338,7 +338,7 @@ defmodule Gameboy.RicochetRobots.Main do
             new_nodes = new_nodes |> Enum.map(fn {{_, ar, ers}, h} -> {ar, ers, h} end)
             more_new_nodes = GameLogic.solver_move_extra_robots(active_robot, extra_robots, stopping_board, history)
             sorted_more_new_nodes = Enum.sort(more_new_nodes, &(count_extra_robots(&1) >= count_extra_robots(&2)))
-            all_new_nodes = new_nodes ++ sorted_more_new_nodes
+            all_new_nodes = sorted_more_new_nodes ++ new_nodes # need to put active robot last for tie-breaking.
             {discovered_nodes, next_queue} = Enum.reduce(all_new_nodes, {discovered_nodes, next_layer}, fn {ar, ers, h}, {discnodes, queue} ->
                 sorted_ers = Enum.sort(ers)
                 case MapSet.member?(discovered_nodes, {ar, sorted_ers}) do
