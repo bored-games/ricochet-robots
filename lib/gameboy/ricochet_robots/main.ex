@@ -48,7 +48,7 @@ defmodule Gameboy.RicochetRobots.Main do
             # store the solver's optimal solution for displaying on SVG 
             solver_solution_string: "",
             # solver continues running to generate puzzles
-            solver_only: true
+            solver_only: false
 
   @type t :: %{
           room_name: String.t(),
@@ -307,7 +307,7 @@ defmodule Gameboy.RicochetRobots.Main do
   # Number_Moves just keeps track of the layer because it's easy.
 
 
-  defp bfs(_neighbors, discovered_nodes, _history, _next_layer, 22, _goal, _stopping_board) do
+  defp bfs(_neighbors, _discovered_nodes, _history, _next_layer, 22, _goal, _stopping_board) do
     Logger.info( "[BFS] Max depth (22) reached.}" )
     :bfs_max_depth_reached
   end
@@ -354,8 +354,8 @@ defmodule Gameboy.RicochetRobots.Main do
   end
 
   # for sorting necessary in breaking ties : assign value based on number of robots that are not the target robot;
-  def count_extra_robots({ar, ers, h}) do
-    ers |> Enum.filter(&match?({_, _}, &1)) |> Enum.uniq_by(fn {n, _} -> n end) |> length
+  def count_extra_robots({_ar, _ers, h}) do
+    h |> Enum.filter(&match?({_, _}, &1)) |> Enum.uniq_by(fn {n, _} -> n end) |> length
   end
 
   @doc """
