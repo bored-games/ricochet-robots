@@ -374,8 +374,9 @@ defmodule Gameboy.RicochetRobots.Main do
   @spec handle_game_action(String.t(), String.t(), SocketHandler.t()) :: iodata() | :error_unknown_game_action
   def handle_game_action(action, content, socket_state) do
     case action do
-      "submit_movelist" -> 
-        new_robots = __MODULE__.move_robots(socket_state.room_name, socket_state.player_name, content)
+      "submit_movelist" ->
+        movelist = content |> Enum.map(fn %{"color" => c, "direction" => d} -> %{color: String.to_atom(c), direction: String.to_atom(d)} end)
+        new_robots = __MODULE__.move_robots(socket_state.room_name, socket_state.player_name, movelist)
         Poison.encode!(%{content: new_robots, action: "update_robots"})
       _ -> :error_unknown_game_action
     end
@@ -469,7 +470,7 @@ defmodule Gameboy.RicochetRobots.Main do
 
     num_robots =
       moves
-      |> Enum.uniq_by(fn %{"color" => c} -> c end)
+      |> Enum.uniq_by(fn %{color: c} -> c end)
       |> Enum.count()
 
     num_moves = moves |> Enum.count()

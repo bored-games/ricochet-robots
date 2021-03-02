@@ -66,6 +66,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     %{symbol: active_symbol, pos: active_pos} = Enum.find(goals, fn %{active: a} -> a end)
 
     active_color = active_symbol |> symbol_to_color_atom
+    active_pos = Utilities.cell_map_to_index(active_pos)
 
     Enum.any?(robots, fn %{color: c, pos: p} ->
       c == active_color && p == active_pos
@@ -196,7 +197,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
     {new_pos, verbose_move} =
       case Enum.find(robots, nil, fn r -> r.color == move.color end) do
         nil -> 
-         # Logger.info("Could not find robot whose r color was #{inspect move.color} in #{inspect robots}")
+          Logger.info("Could not find robot whose r color was #{inspect move.color} in #{inspect robots}")
           {nil, ""}
         mr -> 
           old_pos_map = Utilities.cell_index_to_map(mr.pos)
@@ -750,18 +751,18 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   def get_svg_url(state) do
     goal = Enum.find(state.goals, nil, fn %{active: a} -> a end)
     goal_str = "#{String.downcase(String.at(goal.symbol, 0))},#{goal.pos.x+16*goal.pos.y}"
-    Logger.debug("G: #{inspect goal} and #{inspect goal_str}")
     rr = Enum.find(state.robots, nil, fn %{color: c} -> c == :red end)
-    rr = "#{rr.pos.x + 16*rr.pos.y}"
+    rr = "#{rr.pos}"
     rg = Enum.find(state.robots, nil, fn %{color: c} -> c == :green end)
-    rg = "#{rg.pos.x + 16*rg.pos.y}"
+    rg = "#{rg.pos}"
     rb = Enum.find(state.robots, nil, fn %{color: c} -> c == :blue end)
-    rb = "#{rb.pos.x + 16*rb.pos.y}"
+    rb = "#{rb.pos}"
     ry = Enum.find(state.robots, nil, fn %{color: c} -> c == :yellow end)
-    ry = "#{ry.pos.x + 16*ry.pos.y}"
+    ry = "#{ry.pos}"
     rs = Enum.find(state.robots, nil, fn %{color: c} -> c == :silver end)
-    rs = "#{rs.pos.x + 16*rs.pos.y}"
-    bs = Enum.join(List.flatten(state.visual_board), ",")
+    rs = "#{rs.pos}"
+    # bs = Enum.join(List.flatten(state.visual_board), ",")
+    bs = (for i <- List.flatten(state.visual_board), do: <<i>>, into: <<>>) |> Base.url_encode64()
     #{ms, _rs} = state.best_solution
     ms = state.best_solution_string
     "https://bored-games.github.io/robots-svg/solution.svg?goal=#{goal_str}&red=#{rr}&green=#{rg}&blue=#{rb}&yellow=#{ry}&silver=#{rs}&b=#{bs}#{ms}&theme=dark"
