@@ -5,21 +5,183 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   import Bitwise
   require Logger
-  alias Gameboy.RicochetRobots.{Main}
+  alias Gameboy.RicochetRobots.{Main, Utilities}
 
+
+  # Given a robot position and direction, return the relevant index of the
+  # first wall the robot will hit.
+  def precompute_stopping_cells(board) do
+    for r <- 0..15, into: %{}, do: { r, (for c <- 0..15, into: %{}, do: {c, populate_stopping_cell({c, r}, board)}) }
+  end
+
+
+  # Given a starting position and a bounadry board, pre-compute the [up, down, left, right] stopping cells based on walls
+  defp populate_stopping_cell({x, y}, board) do
+    bb_pos = %{row: round(2 * y + 1), col: round(2 * x + 1)}
+
+    u = for(z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]})
+        |> Enum.filter(fn {a, b} -> b == 1 && a < bb_pos[:row] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.max()
+
+    d = for(z <- 0..32, into: [], do: {z, board[z][bb_pos[:col]]})
+        |> Enum.filter(fn {a, b} -> b == 1 && a > bb_pos[:row] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.min()
+
+    l = board[bb_pos[:row]]
+        |> Enum.filter(fn {a, b} -> b == 1 && a < bb_pos[:col] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.max()
+
+    r = board[bb_pos[:row]]
+        |> Enum.filter(fn {a, b} -> b == 1 && a > bb_pos[:col] end)
+        |> Enum.map(fn {a, _b} -> a end)
+        |> Enum.min()
+
+    {div(u, 2), div(d, 2) - 1, div(l, 2), div(r, 2) - 1}
+  end
+  
+  
+  @doc """
+  Get the stopping cell for a given direction
+  """
+  def get_stopping_cell(%{x: x, y: y}, board, direction) do
+    
+    case direction do
+      :up    -> elem(board[y][x], 0)
+      :down  -> elem(board[y][x], 1)
+      :left  -> elem(board[y][x], 2)
+      :right -> elem(board[y][x], 3)
+      _ -> :error_unknown_direction
+    end
+
+  end
+  
   @doc """
   Return whether the robot that matches the goal color is at the active goal.
   """
-  @spec check_solution([Main.robot_t()], [Main.goal_t()]) :: boolean()
+  @spec check_solution([Main.robot_t()], [Main.goal_t()]) :: boolean
   def check_solution(robots, goals) do
     %{symbol: active_symbol, pos: active_pos} = Enum.find(goals, fn %{active: a} -> a end)
 
-    active_color = active_symbol |> color_to_symbol()
+    active_color = active_symbol |> symbol_to_color_atom
+    active_pos = Utilities.cell_map_to_index(active_pos)
 
     Enum.any?(robots, fn %{color: c, pos: p} ->
       c == active_color && p == active_pos
     end)
   end
+
+  
+  @doc """
+  Given a single moves and the state of the robots, simulate the moves taken by the robots. As fast as possible.
+
+  Return {soln_found, new_target_pos, new_target_moves, new_extra_moves} #to do: update available_moves?
+  """
+  @spec solver_move_target_robot({integer, integer}, atom, [{integer, integer}], map(), {integer, integer}) :: {boolean, {integer, integer}, [{integer, integer}]}
+  def solver_move_target_robot(target_robot, extra_robots, stopping_board, move, goal) do
+        
+    new_target_pos = solver_calculate_new_pos(target_robot, move, extra_robots, stopping_board)
+    soln_found = new_target_pos == goal
+
+    {soln_found, new_target_pos, extra_robots}
+    
+  end
+
+  @doc """
+  Given a single move and the state of the robots, simulate the moves taken by the robots. As fast as possible.
+  return new child nodes for every move of the extra robot.
+  [{target_robot, [other_robots], [shortest-path-history]}]
+  """
+  def solver_move_extra_robots(target_robot, extra_robots, stopping_board, history) do
+
+    moves = [:up, :down, :left, :right]
+    extra_robots
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {r_pos, idx} ->
+        Enum.map(moves, fn m ->
+          new_robot_pos = solver_calculate_new_pos(r_pos, m, [target_robot | extra_robots], stopping_board)
+          new_extra_robots = List.replace_at( extra_robots, idx, new_robot_pos )
+          {target_robot, new_extra_robots, [ {idx, m} | history]}
+        end)
+
+    end)
+
+    # new_pos =
+    #   case Enum.find(extra_robots, fn r -> r.color == move.color end) do
+    #     nil -> nil
+    #     mr -> calculate_new_pos(mr.pos, move.direction, extra_robots, board)
+    #   end
+
+    # Enum.map(robots, fn robot -> calculate_moves(robot, robots, board) end)
+    
+  end
+
+  defp solver_calculate_new_pos(pos, direction, robots, board) do
+    %{x: x, y: y} = Utilities.cell_index_to_map(pos)
+    wall_coord = get_stopping_cell(%{x: x, y: y}, board, direction) # | get_robot_blocked_indices(%{x: x, y: y}, direction, robots)]
+    robot_coord = solver_get_stop_robots(%{x: x, y: y}, direction, robots)
+
+    case direction do
+      :up    -> Utilities.cell_map_to_index(%{x: x, y: max(wall_coord, robot_coord)})
+      :down  -> Utilities.cell_map_to_index(%{x: x, y: min(wall_coord, robot_coord)})
+      :left  -> Utilities.cell_map_to_index(%{x: max(wall_coord, robot_coord), y: y})
+      :right -> Utilities.cell_map_to_index(%{x: min(wall_coord, robot_coord), y: y})
+      _ -> Utilities.cell_map_to_index(%{x: x, y: y})
+    end
+    
+  end
+
+  # Given a robot position and direction, return the first index of any robot that the moving robot will hit.
+  defp solver_get_stop_robots(%{x: rx, y: ry}, direction, robots) do
+
+    case direction do
+      :up ->
+        robots
+        |> Enum.reduce(0, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
+            cond do
+              tx == rx && ty < ry -> max(acc, ty + 1)
+              true -> acc
+            end
+          end)
+
+      :down ->
+        robots
+        |> Enum.reduce(15, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
+            cond do
+              tx == rx && ty > ry -> min(acc, ty - 1)
+              true -> acc
+            end
+          end)
+
+      :left ->
+        robots
+        |> Enum.reduce(0, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
+            cond do
+               tx < rx && ty == ry -> max(acc, tx + 1)
+              true -> acc
+            end
+          end)
+
+      :right ->
+        robots
+        |> Enum.reduce(15, fn p, acc ->
+            %{x: tx, y: ty} = Utilities.cell_index_to_map(p)
+            cond do
+               tx > rx && ty == ry -> min(acc, tx - 1)
+              true -> acc
+            end
+          end)
+    end
+  end
+
+
+
+
 
   @doc """
   Given a list of moves and the state of the robots, simulate the moves taken
@@ -31,17 +193,19 @@ defmodule Gameboy.RicochetRobots.GameLogic do
  
 
   def make_move(robots, board, verbose_list, [move | tailmoves]) do
-    move = move |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
-        
+    
     {new_pos, verbose_move} =
       case Enum.find(robots, nil, fn r -> r.color == move.color end) do
-        nil -> {nil, ""}
+        nil -> 
+          Logger.info("Could not find robot whose r color was #{inspect move.color} in #{inspect robots}")
+          {nil, ""}
         mr -> 
-          new_pos = calculate_new_pos(mr.pos, move.direction, robots, board)
-          verbose_move = "&m=#{String.downcase(String.at(mr.color, 0))},#{mr.pos.x},#{mr.pos.y},#{new_pos.x},#{new_pos.y}"
+          old_pos_map = Utilities.cell_index_to_map(mr.pos)
+          new_pos_map = calculate_new_pos(old_pos_map, move.direction, robots, board)
+          verbose_move = "&m=#{String.downcase(String.at(Atom.to_string(mr.color), 0))},#{old_pos_map.x},#{old_pos_map.y},#{new_pos_map.x},#{new_pos_map.y}"
+          new_pos = Utilities.cell_map_to_index(new_pos_map)
           {new_pos, verbose_move}
       end
-
 
     robots = Enum.map(robots, fn robot ->
       if robot.color == move.color do
@@ -55,17 +219,16 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   end
 
-  defp calculate_new_pos(pos, direction, robots, board) do
-    dir = String.to_atom(direction)
 
-    new_coord = [get_wall_blocked_indices(pos, dir, board) | get_robot_blocked_indices(pos, dir, robots)]
+  defp calculate_new_pos(pos_map, direction, robots, board) do
+    new_coord = [get_wall_blocked_indices(pos_map, direction, board) | get_robot_blocked_indices(pos_map, direction, robots)]
 
     cond do
-      dir == :up    -> %{pos | y: round(Enum.max(new_coord))}
-      dir == :down  -> %{pos | y: round(Enum.min(new_coord))}
-      dir == :left  -> %{pos | x: round(Enum.max(new_coord))}
-      dir == :right -> %{pos | x: round(Enum.min(new_coord))}
-      true -> pos
+      direction == :up    -> %{pos_map | y: round(Enum.max(new_coord))}
+      direction == :down  -> %{pos_map | y: round(Enum.min(new_coord))}
+      direction == :left  -> %{pos_map | x: round(Enum.max(new_coord))}
+      direction == :right -> %{pos_map | x: round(Enum.min(new_coord))}
+      true -> pos_map
     end
   end
 
@@ -75,22 +238,22 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   # Note: Our walls are in a 33x33 array, while our robots are in a 16x16
   # array. We thus have to multiply by 2 to get the index of the walls.
   defp calculate_moves(robot, robots, board) do
-    %{x: robot_x, y: robot_y} = robot.pos
+    %{x: robot_x, y: robot_y} = Utilities.cell_index_to_map(robot.pos)
     %{x: board_x, y: board_y} = %{y: 2 * robot_y + 1, x: round(2 * robot_x + 1)}
     robot_positions = Enum.map(robots, fn %{pos: p} -> p end)
 
-    move_left  = if ( Enum.member?( robot_positions, %{x: robot_x-1, y: robot_y}) || board[board_y][board_x-1] == 1) do nil else "left" end
-    move_right = if ( Enum.member?( robot_positions, %{x: robot_x+1, y: robot_y}) || board[board_y][board_x+1] == 1) do nil else "right" end
-    move_up    = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y-1}) || board[board_y-1][board_x] == 1) do nil else "up" end
-    move_down  = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y+1}) || board[board_y+1][board_x] == 1) do nil else "down" end
+    move_left  = if ( Enum.member?( robot_positions, %{x: robot_x-1, y: robot_y}) || board[board_y][board_x-1] == 1) do nil else :left end
+    move_right = if ( Enum.member?( robot_positions, %{x: robot_x+1, y: robot_y}) || board[board_y][board_x+1] == 1) do nil else :right end
+    move_up    = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y-1}) || board[board_y-1][board_x] == 1) do nil else :up end
+    move_down  = if ( Enum.member?( robot_positions, %{x: robot_x, y: robot_y+1}) || board[board_y+1][board_x] == 1) do nil else :down end
     moves = Enum.filter([move_left, move_right, move_up, move_down], & !is_nil(&1))
     %{robot | moves: moves}
   end
 
   # Given a robot position and direction, return the relevant index of the
   # first wall the robot will hit.
-  defp get_wall_blocked_indices(vb_pos, direction, board) do
-    bb_pos = %{row: round(2 * vb_pos[:y] + 1), col: round(2 * vb_pos[:x] + 1)}
+  defp get_wall_blocked_indices(%{x: x, y: y}, direction, board) do
+    bb_pos = %{row: round(2 * y + 1), col: round(2 * x + 1)}
 
     case direction do
       :up ->
@@ -132,27 +295,30 @@ defmodule Gameboy.RicochetRobots.GameLogic do
 
   # Given a robot position and direction, return a list of indices of any robots
   # that the active robot will hit.
-  defp get_robot_blocked_indices(robot_pos, direction, robots) do
-    %{x: rx, y: ry} = robot_pos
+  defp get_robot_blocked_indices(robot_pos = %{x: rx, y: ry}, direction, robots) do
 
     case direction do
       :up ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx == rx && yy < ry end)
         |> Enum.map(fn %{pos: %{y: yy}} -> yy + 1 end)
 
       :down ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx == rx && yy > ry end)
         |> Enum.map(fn %{pos: %{y: yy}} -> yy - 1 end)
 
       :left ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx < rx && yy == ry end)
         |> Enum.map(fn %{pos: %{x: xx}} -> xx + 1 end)
 
       :right ->
         robots
+        |> Enum.map(fn r -> %{r | pos: Utilities.cell_index_to_map(r.pos) } end)
         |> Enum.filter(fn %{pos: %{x: xx, y: yy}} -> xx > rx && yy == ry end)
         |> Enum.map(fn %{pos: %{x: xx}} -> xx - 1 end)
     end
@@ -162,31 +328,28 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   @spec populate_robots([[integer]]) :: [Main.robot_t()]
   def populate_robots(boundary_board) do
     robots = []
-      |> add_robot("red")
-      |> add_robot("green")
-      |> add_robot("blue")
-      |> add_robot("yellow")
-      |> add_robot("silver")
+      |> add_robot(:red)
+      |> add_robot(:green)
+      |> add_robot(:blue)
+      |> add_robot(:yellow)
+      |> add_robot(:silver)
+      
     Enum.map(robots, fn robot -> calculate_moves(robot, robots, boundary_board) end)
   end
 
   # Given color, list of previous robots, add a single 'color' robot to an unoccupied square
-  @spec add_robot([Main.robot_t()], String.t()) :: [Main.robot_t()]
+  @spec add_robot([Main.robot_t()], atom) :: [Main.robot_t()]
   defp add_robot(robots, color) do
-    robot = %{pos: rand_position(robots), color: color, moves: ["up", "left", "down", "right"]}
+    robot = %{pos: rand_position(robots), color: color, moves: [:up, :left, :down, :right]}
     [robot | robots]
   end
 
-  @open_indices Enum.to_list(0..15) -- [7, 8]
+  @open_indices Enum.to_list(0..255) -- [119, 120, 135, 136]
 
   # Given a list of occupied positions, choose a new position.
-  @spec rand_position([Main.position_t()]) :: [Main.position_t()]
+  @spec rand_position([Main.robot_t()]) :: integer
   defp rand_position(robots) do
-    occupied = for(robot <- robots, do: robot.pos) |> Enum.to_list()
-
-    for(x <- @open_indices, y <- @open_indices, do: %{x: x, y: y})
-    |> Enum.to_list()
-    |> (&(&1 -- occupied)).()
+    @open_indices -- (robots |> Enum.map(fn %{pos: p} -> p end))
     |> Enum.random()
   end
 
@@ -460,8 +623,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Add L
-  @spec add_L1(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
-          {map, [Main.goal_t()]}
+  @spec add_L1(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) :: {map, [Main.goal_t()]}
   defp add_L1(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col + 1], 1)
@@ -490,8 +652,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 180 deg
-  @spec add_L3(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
-          {map, [Main.goal_t()]}
+  @spec add_L3(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) :: {map, [Main.goal_t()]}
   defp add_L3(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
@@ -505,8 +666,7 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   end
 
   # Add L, rotated 270 deg CW
-  @spec add_L4(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) ::
-          {map, [Main.goal_t()]}
+  @spec add_L4(map, {integer, integer}, String.t(), boolean, [Main.goal_t()]) :: {map, [Main.goal_t()]}
   defp add_L4(a, {row, col}, goal_string, goal_active, goals) do
     a = put_in(a[row][col], 1)
     a = put_in(a[row][col - 1], 1)
@@ -567,7 +727,9 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   def rand_distant_pairs(rs, cs, avoids, cnt \\ 0) do
     {r, c} = {Enum.random(rs), Enum.random(cs)}
 
-    if cnt > 50 do
+    if cnt > 500 do
+      Logger.error("rand_distant_pairs failed too many times. Quitting.")
+      System.stop(-1)
       [{-1, -1} | avoids]
     else
       if Enum.any?(avoids, fn {r1, c1} -> dist_under_2?({r1, c1}, {r, c}) end) do
@@ -585,28 +747,27 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   Given a list of moves and the state of the robots, simulate the moves taken
   by the robots.
   """
+  @spec get_svg_url(Main.t()) :: String.t()
   def get_svg_url(state) do
     goal = Enum.find(state.goals, nil, fn %{active: a} -> a end)
     goal_str = "#{String.downcase(String.at(goal.symbol, 0))},#{goal.pos.x+16*goal.pos.y}"
-    rr = Enum.find(state.robots, nil, fn %{color: c} -> c == "red" end)
-    rr = "#{rr.pos.x + 16*rr.pos.y}"
-    rg = Enum.find(state.robots, nil, fn %{color: c} -> c == "green" end)
-    rg = "#{rg.pos.x + 16*rg.pos.y}"
-    rb = Enum.find(state.robots, nil, fn %{color: c} -> c == "blue" end)
-    rb = "#{rb.pos.x + 16*rb.pos.y}"
-    ry = Enum.find(state.robots, nil, fn %{color: c} -> c == "yellow" end)
-    ry = "#{ry.pos.x + 16*ry.pos.y}"
-    rs = Enum.find(state.robots, nil, fn %{color: c} -> c == "silver" end)
-    rs = "#{rs.pos.x + 16*rs.pos.y}"
-    bs = Enum.join(List.flatten(state.visual_board), ",")
-    # ms = for m <- state.best_solution_moves, into: "", do: encode_move(m)
-    ms = state.best_solution_moves
+    rr = Enum.find(state.robots, nil, fn %{color: c} -> c == :red end)
+    rr = "#{rr.pos}"
+    rg = Enum.find(state.robots, nil, fn %{color: c} -> c == :green end)
+    rg = "#{rg.pos}"
+    rb = Enum.find(state.robots, nil, fn %{color: c} -> c == :blue end)
+    rb = "#{rb.pos}"
+    ry = Enum.find(state.robots, nil, fn %{color: c} -> c == :yellow end)
+    ry = "#{ry.pos}"
+    rs = Enum.find(state.robots, nil, fn %{color: c} -> c == :silver end)
+    rs = "#{rs.pos}"
+    # bs = Enum.join(List.flatten(state.visual_board), ",")
+    bs = (for i <- List.flatten(state.visual_board), do: <<i>>, into: <<>>) |> Base.url_encode64()
+    #{ms, _rs} = state.best_solution
+    ms = state.best_solution_string
     "https://bored-games.github.io/robots-svg/solution.svg?goal=#{goal_str}&red=#{rr}&green=#{rg}&blue=#{rb}&yellow=#{ry}&silver=#{rs}&b=#{bs}#{ms}&theme=dark"
   end
 
-  defp encode_move(move) do
-    "&m=#{String.downcase(String.at(move["color"], 0))},1,2,3,4"
-  end
 
   # TODO: write this with position_t type
   @doc """
@@ -623,7 +784,18 @@ defmodule Gameboy.RicochetRobots.GameLogic do
   @blue_symbols MapSet.new(["BlueMoon", "BluePlanet", "BlueCross", "BlueGear"])
   @yellow_symbols MapSet.new(["YellowMoon", "YellowPlanet", "YellowCross", "YellowGear"])
 
-  defp color_to_symbol(color) do
+  @spec symbol_to_color_atom(String.t()) :: atom
+  def symbol_to_color_atom(color) do
+    cond do
+      MapSet.member?(@red_symbols, color) -> :red
+      MapSet.member?(@green_symbols, color) -> :green
+      MapSet.member?(@blue_symbols, color) -> :blue
+      MapSet.member?(@yellow_symbols, color) -> :yellow
+    end
+  end
+  
+  @spec symbol_to_color_string(String.t()) :: String.t()
+  def symbol_to_color_string(color) do
     cond do
       MapSet.member?(@red_symbols, color) -> "red"
       MapSet.member?(@green_symbols, color) -> "green"

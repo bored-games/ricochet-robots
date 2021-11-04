@@ -18,6 +18,7 @@ defmodule Gameboy.Codenames.Main do
             blue_remaining: 0,
             current_team: 1, # 1 is red, 2 is blue
             game_over: false,
+            winner: false,
             setting_countdown: 6,
             current_countdown: 6,
             current_timer: 0,
@@ -36,6 +37,7 @@ defmodule Gameboy.Codenames.Main do
           blue_remaining: integer,
           current_team: 1 | 2,
           game_over: boolean,
+          winner: 0 | 1 | 2,
           setting_countdown: integer,
           current_countdown: integer,
           current_timer: integer,
@@ -92,6 +94,7 @@ defmodule Gameboy.Codenames.Main do
                            blue_remaining: blue_remaining,
                            current_team: current_team,
                            game_over: false,
+                           winner: 0,
                            red_spymaster: nil,
                            blue_spymaster: nil,
                            ready_for_new_game: %{red: false, blue: false},
@@ -149,7 +152,7 @@ defmodule Gameboy.Codenames.Main do
         end
       "set_team" ->
         case GenServer.call(via_tuple(socket_state.room_name), {:set_team, socket_state.player_name, content}) do
-          :ok -> Poison.encode!(%{content: "ok", action: "update_teams"})
+          :ok -> Poison.encode!(%{content: "ok", action: "update_teams"}) #TODO: update_user here; send scoreboard inside :set_team!
           {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
         end
       "new_game" ->
@@ -201,10 +204,16 @@ defmodule Gameboy.Codenames.Main do
       cond do
         state.clue == nil -> 
           if state.current_team == 1 do
-            "Waiting for red spymaster"
+            "Waiting for red Spymaster"
           else
-            "Waiting for blue spymaster"
+            "Waiting for blue Spymaster"
           end
+
+        state.game_over and state.winner == 1 ->
+          "Red has won the game!"
+
+        state.game_over and state.winner == 2 ->
+          "Blue has won the game!"
 
         state.game_over ->
           "Select New Game to continue."
@@ -218,7 +227,9 @@ defmodule Gameboy.Codenames.Main do
         true ->
           ""
       end
-    message = Poison.encode!(%{action: "update_status", content: text})
+
+    status_map = %{text: text, clue: state.clue, remaining_guesses: state.remaining_guesses}
+    message = Poison.encode!(%{action: "update_status", content: status_map})
     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
   
@@ -253,7 +264,7 @@ defmodule Gameboy.Codenames.Main do
           %{"count" => c, "word" => w} ->
             case Integer.parse(c) do
               {rg, _} ->
-                state = %{state | clue: w, remaining_guesses: rg}
+                state = %{state | clue: w, remaining_guesses: rg+1}
                 broadcast_turn(state)
                 {:reply, :ok, state}
               
@@ -281,13 +292,19 @@ defmodule Gameboy.Codenames.Main do
               state.game_over -> # TO DO: game is ovr but player wants to show cards 1 at a time...
                 {:reply, {:error, "Select New Game to continue."}, state}
 
+              room_player.team < 1 or room_player.team > 2 ->
+                {:reply, {:error, "You are not on a team!"}, state}
+
               state.current_team != room_player.team ->
                 {:reply, {:error, "It's not your turn!"}, state}
 
               state.clue == nil ->
-                {:reply, {:error, "Awaiting clue from your spymaster."}, state}
+                {:reply, {:error, "Awaiting clue from your Spymaster."}, state}
 
-              player_name == state.red_spymaster or player_name == state.blue_spymaster ->
+              player_name == state.red_spymaster and state.current_team == 1 ->
+                {:reply, {:error, "Spymasters don't uncover cards!"}, state}
+
+              player_name == state.blue_spymaster and state.current_team == 2 ->
                 {:reply, {:error, "Spymasters don't uncover cards!"}, state}
 
               true ->
@@ -296,41 +313,44 @@ defmodule Gameboy.Codenames.Main do
                     {:reply, {:error, "Invalid attempt!"}, state}
 
                   {continue_turn, assassin, red_remaining, blue_remaining, new_board} ->
-                    state =
-                      if continue_turn do
-                        %{ state | board: new_board,
-                                   remaining_guesses: state.remaining_guesses - 1 }
-                      else
-                        %{ state | board: new_board,
-                                   current_team: 3-state.current_team }
-                      end
-
-                    message = Poison.encode!(%{action: "update_last_move", content: index})
-                    GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
                     
-                    cond do
-                      # game is over (assassin, 0 left for a team)
-                      false ->
-                        {:reply, :ok, state}
+                    state = %{ state | board: new_board,
+                                       red_remaining: red_remaining,
+                                       blue_remaining: blue_remaining,
+                                       remaining_guesses: state.remaining_guesses - 1 }
 
-                      state.remaining_guesses <= 0 -> # turn is over
-                        state = %{ state | current_team: 3-state.current_team, clue: nil }
-                        {:reply, :ok, state}
+                    state =
+                      cond do
+                        assassin ->
+                          %{ state | game_over: true,
+                                     winner: 3 - state.current_team }
+                                     
+                        red_remaining == 0 ->
+                          %{ state | game_over: true,
+                                    winner: 1 }
+                        
+                        blue_remaining == 0 ->
+                          %{ state | game_over: true,
+                                      winner: 2 }
+                                     
+                        assassin ->
+                          %{ state | game_over: true,
+                                     winner: 3 - state.current_team }
 
-                      true -> # keep guessing!
-                        {:reply, :ok, state}
+                        not continue_turn ->
+                          %{ state | clue: nil,
+                                     remaining_guesses: 0,
+                                     current_team: 3 - state.current_team }
 
-                    end
-                    # check if game is over.                    
-                    # {count_all, count_new, complete_Codenamess} = GameLogic.check_solution(new_board, complete_Codenamess, selected_pieces, {x, y})
-                      
-                    # check if out of moves
+                        true ->
+                          state
+                      end
                       
                     broadcast_board(state)
                     broadcast_turn(state)
                     broadcast_spymasters(state)
                     {:reply, :ok, state}
-                  end
+                end
             end
             
           :error ->
@@ -349,28 +369,41 @@ defmodule Gameboy.Codenames.Main do
   
   
   @impl true
-  def handle_call({:pass, player}, _from, state) do
-    Logger.debug("PASS BY #{inspect player}")
-    cond do
-      false ->
-      # TODO player.team != current_team ->  
-        {:reply, {:error, "It's not your turn."}, state}
-        
-      false ->
-      # state.clue == nil ->  
-        {:reply, {:error, "It's not time to pass."}, state}
-      
-      player == state.red_spymaster or player == state.blue_spymaster ->  
-        {:reply, {:error, "Spymasters can't pass."}, state}
+  def handle_call({:pass, player_name}, _from, state) do
+    
+    case Room.fetch(state.room_name) do
+      {:ok, room} -> 
+        case Map.fetch(room.players, player_name) do
+          {:ok, room_player} ->
+            Logger.debug("PASS BY #{inspect player_name}")
 
-      true ->
-        new_state = %{state | current_team: 3-state.current_team, clue: nil}
-        
-        broadcast_turn(new_state)
-        broadcast_spymasters(state)
-                            
-        {:reply, :ok, new_state}
+            cond do
+              room_player.team != state.current_team ->  
+                {:reply, {:error, "It's not your turn."}, state}
+                
+              state.clue == nil ->  
+                {:reply, {:error, "It's not time to pass."}, state}
+              
+              player_name == state.red_spymaster or player_name == state.blue_spymaster ->  
+                {:reply, {:error, "Spymasters can't pass."}, state}
+
+              true ->
+                new_state = %{state | current_team: 3-state.current_team, clue: nil, remaining_guesses: 0}
+                
+                broadcast_turn(new_state)
+                broadcast_spymasters(state)
+                                    
+                {:reply, :ok, new_state}
+            end
+            
+            :error ->
+              {:reply, {:error, "Error finding #{inspect player_name} in #{inspect state.room_name}"}, state}
+          end
+        _ ->
+          Logger.debug("Could not find room #{inspect state.room_name}")
+          {:reply, {:error, "Unknown room"}, state}
       end
+
   end
 
   
@@ -412,9 +445,6 @@ defmodule Gameboy.Codenames.Main do
                   
                 room_player.team < 1 or room_player.team > 2 ->  
                   {:reply, {:error, "Join a team before selecting a Spymaster."}, state}
-                
-                state.red_spymaster == spymaster or state.blue_spymaster == spymaster ->  
-                  {:reply, {:error, "Player is already a Spymaster."}, state}
 
                 true ->
                   state =
@@ -450,7 +480,7 @@ defmodule Gameboy.Codenames.Main do
 
     cond do
       player != state.red_spymaster and player != state.blue_spymaster ->  
-        {:reply, {:error, "Only spymasters can start the game."}, state}
+        {:reply, {:error, "Only Spymasters can start the game."}, state}
 
       true ->
         ready =
@@ -469,7 +499,7 @@ defmodule Gameboy.Codenames.Main do
           {:reply, :ok, %{state | ready_for_new_game: ready}}
         end
         
-      end
+    end
   end
 
   
@@ -499,7 +529,7 @@ defmodule Gameboy.Codenames.Main do
           {:reply, :ok, %{state | ready_for_new_game: ready}}
         end
         
-      end
+    end
   end
 
     
