@@ -10,7 +10,7 @@ defmodule Gameboy do
         plug: Gameboy.Router,
         options: [
           dispatch: dispatch(),
-          port: 4000
+          port: 443
         ]
       ),
       Registry.child_spec(
