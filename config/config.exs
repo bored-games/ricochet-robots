@@ -4,7 +4,7 @@ config :gameboy, Gameboy.RicochetRobots.Repo,
   database: "ricochetrobots_repo",
   username: "postgres",
   password: "notarealpassword",
-  hostname: "localhost"
+  hostname: "localhost",
   adapter: Ecto.Adapters.Postgres,
   url: "${DATABASE_URL}",
   database: "",
