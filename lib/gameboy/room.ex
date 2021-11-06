@@ -190,7 +190,7 @@ defmodule Gameboy.Room do
   def welcome_player(room_name, player_name) do
     Logger.info("[#{room_name}] Welcoming `#{player_name}`.")
     {:ok, room} = GenServer.call(via_tuple(room_name), :get_state)
-    test =
+    _test =
       case get_game_module(room.game) do
         :error_no_current_game ->
           broadcast_scoreboard(room_name)
@@ -340,9 +340,7 @@ defmodule Gameboy.Room do
   end
 
   
-  @doc """
-  Get a player and their status within a room.
-  """
+  # Get a player and their status within a room.
   @impl true
   def handle_call({:get_player, player_name}, _from, state) do
     case Player.fetch(player_name) do
@@ -359,9 +357,7 @@ defmodule Gameboy.Room do
   end
 
   
-  @doc """
-  Add a game to a room. Check if player has the proper authority and if a game already exists.
-  """
+  # Add a game to a room. Check if player has the proper authority and if a game already exists.
   @impl true
   def handle_call({:add_game, player_name, game_name}, _from, state) do
     if state.game do
@@ -386,9 +382,7 @@ defmodule Gameboy.Room do
   end
   
   
-  @doc """
-  Add points to a player in a room.
-  """
+  # Set a player on a team
   @impl true
   def handle_call({:set_team, player_name, team}, _from, state) do
     Logger.debug("Gotta set the team : #{inspect team}")
@@ -403,9 +397,7 @@ defmodule Gameboy.Room do
   end
 
   
-  @doc """
-  Add points to a player in a room.
-  """
+  # Add points to a player in a room.
   @impl true
   def handle_call({:add_points, player_name, points}, _from, state) do
     
@@ -420,10 +412,7 @@ defmodule Gameboy.Room do
     {:reply, :ok, new_state}
   end
 
-  @doc """
-  Remove a player from a room. Error if the player is not in the room. If the
-  player being removed is the last player in the room, close the room.
-  """
+  # Remove a player from a room. Error if the player is not in the room. If the player being removed is the last player in the room, close the room.
   @impl true
   def handle_call({:remove_player, player_name}, _from, state) do
     if Map.has_key?(state.players, player_name) do
@@ -444,10 +433,7 @@ defmodule Gameboy.Room do
     end
   end
 
-  @doc """
-  Send a chat message from a player to the room. Dispatch the message to all
-  websockets of players currently in the room and save it to the chat log.
-  """
+  # Send a chat message from a player to the room. Dispatch the message to all websockets of players currently in the room and save it to the chat log.
   @impl true
   def handle_cast({:player_chat, player_name, chat_message}, state) do
     case Player.fetch(player_name) do
@@ -474,10 +460,7 @@ defmodule Gameboy.Room do
     end
   end
 
-  @doc """
-  Send a system chatline to a room. Dispatch the message to all websockets of
-  players currently in the room and save it to the chat log.
-  """
+  # Send a system chatline to a room. Dispatch the message to all websockets of players currently in the room and save it to the chat log.
   @impl true
   def handle_cast({:system_chat, chat_message}, state) do
     message =
@@ -498,10 +481,7 @@ defmodule Gameboy.Room do
   end
 
 
-  @doc """
-  Send an arbitrary system message to a room. Dispatch the message to all websockets of
-  players currently in the room.
-  """
+  # Send an arbitrary system message to a room. Dispatch the message to all websockets of players currently in the room.
   @impl true
   def handle_cast({:system_message, content_map, action}, state) do
     message =
@@ -521,10 +501,7 @@ defmodule Gameboy.Room do
     {:noreply, state}
   end
 
-  @doc """
-  Send a system message to a specific player in a room. Dispatch the message
-  to the websocket of that specific player.
-  """
+  # Send a system message to a specific player in a room. Dispatch the message to the websocket of that specific player.
   @impl true
   def handle_cast({:system_chat_to_player, player_name, chat_message}, state) do
     message =
@@ -545,9 +522,7 @@ defmodule Gameboy.Room do
     {:noreply, state}
   end
 
-  @doc """
-  Broadcast the current scoreboard to all clients in a room.
-  """
+  # Broadcast the current scoreboard to all clients in a room.
   @impl true
   def handle_cast(:broadcast_scoreboard, state) do
        

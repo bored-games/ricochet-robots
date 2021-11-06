@@ -52,8 +52,8 @@ defmodule Gameboy.Codenames.GameLogic do
 
     code = (2-current_team) <<< 52
     code = code ||| (0b11 <<< (2*assassin_id))
-    code = Enum.reduce(red_cards, code, fn {i, w}, c -> c ||| (0b01 <<< (2*i)) end)
-    code = Enum.reduce(blue_cards, code, fn {i, w}, c -> c ||| (0b10 <<< (2*i)) end)
+    code = Enum.reduce(red_cards, code, fn {i, _w}, c -> c ||| (0b01 <<< (2*i)) end)
+    code = Enum.reduce(blue_cards, code, fn {i, _w}, c -> c ||| (0b10 <<< (2*i)) end)
     prime = 0b1010110011110100001100011110100001011000010000101011
     password = Integer.to_string(prime ^^^ code, 36)
 

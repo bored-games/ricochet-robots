@@ -127,7 +127,7 @@ defmodule Gameboy.Player do
     "#e0e0e0"
   ]
 
-  def start_link(%{player_name: player_name, socket_pid: socket_pid, private_key: private_key} = opts) do   
+  def start_link(%{player_name: player_name, socket_pid: _socket_pid, private_key: private_key} = opts) do   
     {:ok, _} = GenServer.start_link(__MODULE__, opts, name: {:via, Registry, {Registry.PlayerRegistry, player_name, private_key}})
   end
 

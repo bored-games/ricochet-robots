@@ -123,7 +123,7 @@ defmodule Gameboy.Codenames.Main do
 
 
   def handle_game_action(action, content, socket_state) do
-    {:ok, state} = fetch(socket_state.room_name)
+    {:ok, _state} = fetch(socket_state.room_name)
 
     #Todo: only send poison response if necessary, else :noreply..
     case action do
@@ -295,7 +295,7 @@ defmodule Gameboy.Codenames.Main do
                   :error_not_valid_move ->
                     {:reply, {:error, "Invalid attempt!"}, state}
 
-                  {continue_turn, assassin, red_remaining, blue_remaining, new_board} ->
+                  {continue_turn, _assassin, _red_remaining, _blue_remaining, new_board} ->
                     state =
                       if continue_turn do
                         %{ state | board: new_board,
@@ -308,19 +308,19 @@ defmodule Gameboy.Codenames.Main do
                     message = Poison.encode!(%{action: "update_last_move", content: index})
                     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
                     
-                    cond do
-                      # game is over (assassin, 0 left for a team)
-                      false ->
-                        {:reply, :ok, state}
+                    state = 
+                      cond do
+                        # game is over (assassin, 0 left for a team)
+                        false ->
+                          state
 
-                      state.remaining_guesses <= 0 -> # turn is over
-                        state = %{ state | current_team: 3-state.current_team, clue: nil }
-                        {:reply, :ok, state}
+                        state.remaining_guesses <= 0 -> # turn is over
+                          %{ state | current_team: 3-state.current_team, clue: nil }
 
-                      true -> # keep guessing!
-                        {:reply, :ok, state}
+                        true -> # keep guessing!
+                          state
 
-                    end
+                      end
                     # check if game is over.                    
                     # {count_all, count_new, complete_Codenamess} = GameLogic.check_solution(new_board, complete_Codenamess, selected_pieces, {x, y})
                       

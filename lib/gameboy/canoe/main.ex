@@ -107,7 +107,7 @@ defmodule Gameboy.Canoe.Main do
 
 
   def handle_game_action(action, content, socket_state) do
-    {:ok, state} = fetch(socket_state.room_name)
+    {:ok, _state} = fetch(socket_state.room_name)
 
     #Todo: only send poison response if necessary, else :noreply..
     case action do
