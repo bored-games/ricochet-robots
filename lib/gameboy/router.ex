@@ -8,6 +8,6 @@ defmodule Gameboy.Router do
   plug(:dispatch)
 
   match _ do
-    send_resp(conn, 404, "404")
+    send_resp(conn, 200, "Success")
   end
 end
