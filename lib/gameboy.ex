@@ -1,3 +1,5 @@
+require Logger
+
 defmodule Gameboy do
   @moduledoc """
   A multiplayer server for the popular board game *Ricochet Robots*.

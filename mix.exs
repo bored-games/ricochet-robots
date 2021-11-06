@@ -31,7 +31,6 @@ defmodule Gameboy.MixProject do
 
   defp deps do
     [
-      # {:gen_tcp_accept_and_close, "~> 0.1.0"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.2", only: [:dev, :test], runtime: false},
       {:cowboy, "~> 2.4"},

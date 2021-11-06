@@ -25,11 +25,6 @@ defmodule Gameboy.SocketHandler do
   """
   @impl true
   def init(request, _state) do
-      
-      
-      Logger.debug("You are here.")
-
-
     state = %__MODULE__{
       player_name: Player.new(self(), request.headers["sec-websocket-protocol"]),
       room_name: nil
