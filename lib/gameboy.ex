@@ -9,8 +9,7 @@ defmodule Gameboy do
         scheme: :http,
         plug: Gameboy.Router,
         options: [
-          dispatch: dispatch(),
-          port: 80
+          dispatch: dispatch()
         ]
       ),
       Registry.child_spec(
