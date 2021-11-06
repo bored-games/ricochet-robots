@@ -25,6 +25,9 @@ defmodule Gameboy.SocketHandler do
   """
   @impl true
   def init(request, _state) do
+      
+      
+      Logger.debug("You are here.")
 
 
     state = %__MODULE__{
