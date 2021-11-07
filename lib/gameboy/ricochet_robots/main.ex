@@ -48,7 +48,9 @@ defmodule Gameboy.RicochetRobots.Main do
             # store the solver's optimal solution for displaying on SVG 
             solver_solution_string: "",
             # solver continues running to generate puzzles
-            solver_only: false
+            solver_only: false,
+            # store solutions in postgres database
+            store_solutions: false
 
   @type t :: %{
           room_name: String.t(),
@@ -71,7 +73,8 @@ defmodule Gameboy.RicochetRobots.Main do
           solver_enabled: boolean,
           solver_solution: {integer, integer} | nil,
           solver_solution_string: String.t(),
-          solver_only: boolean
+          solver_only: boolean,
+          store_solutions: boolean
         }
 
   @typedoc "Position: { row: Integer, col: Integer }"
@@ -181,7 +184,6 @@ defmodule Gameboy.RicochetRobots.Main do
         }
       end
     
-
     broadcast_visual_board(new_state)
     broadcast_robots(new_state)
     broadcast_goals(new_state)
@@ -248,41 +250,44 @@ defmodule Gameboy.RicochetRobots.Main do
             
             {_moved_robots, verbose_move_list} = GameLogic.make_move(state.robots, state.boundary_board, "", history_str)
             robots_map = for %{color: c, pos: p} <- state.robots, into: %{}, do: {c, p}
-            # Insert it into the Repo
-            puzzle = %Puzzle{}
             
-            difficulty = cond do
-              moves_moved + robots_moved > 23 -> 7
-              moves_moved + robots_moved > 20 -> 6
-              moves_moved + robots_moved > 17 -> 5
-              moves_moved + robots_moved > 14 -> 4
-              moves_moved + robots_moved > 11 -> 3
-              moves_moved + robots_moved >  8 -> 2
-              moves_moved + 2*robots_moved >  7 -> 1
-              true                            -> 0
-            end
-
-            if (difficulty > 4) do
-              changeset = Puzzle.changeset(puzzle, %{boundary_board: Enum.join(List.flatten(state.visual_board), ","),
-                                                    red_pos: robots_map[:red],
-                                                    yellow_pos: robots_map[:yellow],
-                                                    green_pos: robots_map[:green],
-                                                    blue_pos: robots_map[:blue],
-                                                    silver_pos: robots_map[:silver],
-                                                    goal_color: GameLogic.symbol_to_color_string(active_symbol),
-                                                    goal_pos: goal_index,
-                                                    solution_str: verbose_move_list,
-                                                    solution_robots: robots_moved,
-                                                    solution_moves: moves_moved,
-                                                    difficulty: difficulty})
-              case Repo.insert(changeset) do
-                {:ok, _puzzle} ->
-                  Logger.debug("Saved the puzzle! #{inspect moves_moved} moves, #{inspect robots_moved}, difficulty: #{difficulty}." )
-                {:error, changeset} ->
-                  Logger.debug("Oh no! There was an error with #{inspect changeset.errors}")
+            if state.store_solutions do
+              # Insert it into the Repo
+              puzzle = %Puzzle{}
+              
+              difficulty = cond do
+                moves_moved + robots_moved > 23 -> 7
+                moves_moved + robots_moved > 20 -> 6
+                moves_moved + robots_moved > 17 -> 5
+                moves_moved + robots_moved > 14 -> 4
+                moves_moved + robots_moved > 11 -> 3
+                moves_moved + robots_moved >  8 -> 2
+                moves_moved + 2*robots_moved >  7 -> 1
+                true                            -> 0
               end
-            else
-                  Logger.debug(" ... skipping ... #{inspect moves_moved} moves, #{inspect robots_moved}, difficulty: #{difficulty}." )
+
+              if (difficulty > 4) do
+                changeset = Puzzle.changeset(puzzle, %{boundary_board: Enum.join(List.flatten(state.visual_board), ","),
+                                                      red_pos: robots_map[:red],
+                                                      yellow_pos: robots_map[:yellow],
+                                                      green_pos: robots_map[:green],
+                                                      blue_pos: robots_map[:blue],
+                                                      silver_pos: robots_map[:silver],
+                                                      goal_color: GameLogic.symbol_to_color_string(active_symbol),
+                                                      goal_pos: goal_index,
+                                                      solution_str: verbose_move_list,
+                                                      solution_robots: robots_moved,
+                                                      solution_moves: moves_moved,
+                                                      difficulty: difficulty})
+                case Repo.insert(changeset) do
+                  {:ok, _puzzle} ->
+                    Logger.debug("Saved the puzzle! #{inspect moves_moved} moves, #{inspect robots_moved}, difficulty: #{difficulty}." )
+                  {:error, changeset} ->
+                    Logger.debug("Oh no! There was an error with #{inspect changeset.errors}")
+                end
+              else
+                    Logger.debug(" ... skipping ... #{inspect moves_moved} moves, #{inspect robots_moved}, difficulty: #{difficulty}." )
+              end
             end
 
             {:solver_success, {length(history), robots_moved}}

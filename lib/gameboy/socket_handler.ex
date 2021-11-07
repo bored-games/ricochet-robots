@@ -130,10 +130,22 @@ defmodule Gameboy.SocketHandler do
   end
 
 
-  #  Options: player_limit: The player limit for the new room. By default, 10.
+  #  TO DO!
   @impl true
   def websocket_handle({:json, "create_room", opts}, state) do # %{ room_name: room_name, game_name: game_name }
     Logger.debug("websocket_handle create_room with #{inspect opts}")
+    _room_name = Room.new(opts) # TO DO: should be able to use `, game_name: "Ricochet Robots"` here
+
+    {:reply, {:text, "Room created..."}, state}
+  end
+
+
+  #  TO DO!
+  @impl true
+  def websocket_handle({:json, "redirect_to_room", opts}, state) do # %{ room_name: room_name, game_name: game_name }
+    Logger.debug("websocket_handle redirect_to_room with #{inspect opts}")
+
+    Logger.debug("Below line fails")
     {room_name, game_name} = Room.new(opts |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)) # TO DO: should be able to use `, game_name: "Ricochet Robots"` here
 
     url =
