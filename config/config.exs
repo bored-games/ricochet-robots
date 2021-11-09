@@ -1,9 +1,10 @@
 import Config
 
 config :gameboy, Gameboy.RicochetRobots.Repo,
-  database: "ricochetrobots_repo",
-  username: "postgres",
-  password: "notarealpassword",
-  hostname: "localhost"
+  adapter: Ecto.Adapters.Postgres,
+  url: {:system, "DATABASE_URL"},
+  database: "",
+  ssl: true,
+  pool_size: 2
 
 config :gameboy, ecto_repos: [Gameboy.RicochetRobots.Repo]
