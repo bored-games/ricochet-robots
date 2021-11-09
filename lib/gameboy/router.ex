@@ -1,8 +1,9 @@
+require Logger
+
 defmodule Gameboy.Router do
   @moduledoc false
 
   use Plug.Router
-  use Logger
 
   plug(Plug.Static, at: "/", from: {:ricochet_robots, "priv/"})
   plug(:match)
