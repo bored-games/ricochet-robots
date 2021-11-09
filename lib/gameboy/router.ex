@@ -10,7 +10,7 @@ defmodule Gameboy.Router do
   plug(:dispatch)
 
   match _ do
-    Logger.debug("AAAAAAAAAAAAAA #{inspect({:system, "DATABASE_URL"})}............")
+    Logger.debug("AAAAAAAAAAAAAA #{inspect(System.get_env("DATABASE_URL"))}............")
     send_resp(conn, 200, "Success")
   end
 end
