@@ -1,5 +1,3 @@
-require Logger
-
 defmodule Gameboy.Router do
   @moduledoc false
 

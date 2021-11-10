@@ -134,32 +134,22 @@ defmodule Gameboy.SocketHandler do
   @impl true
   def websocket_handle({:json, "create_room", opts}, state) do # %{ room_name: room_name, game_name: game_name }
     Logger.debug("websocket_handle create_room with #{inspect opts}")
-    _room_name = Room.new(opts) # TO DO: should be able to use `, game_name: "Ricochet Robots"` here
-
-    {:reply, {:text, "Room created..."}, state}
-  end
-
-
-  #  TO DO!
-  @impl true
-  def websocket_handle({:json, "redirect_to_room", opts}, state) do # %{ room_name: room_name, game_name: game_name }
-    Logger.debug("websocket_handle redirect_to_room with #{inspect opts}")
-
-    Logger.debug("Below line fails")
     {room_name, game_name} = Room.new(opts |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)) # TO DO: should be able to use `, game_name: "Ricochet Robots"` here
+    Logger.debug("CREATE ROOM: #{inspect(room_name)} #{inspect(game_name)}")
 
     url =
       case game_name do
-        "Canoe" -> "http://localhost:8002/Canoe.html?room=" <> room_name
-        "Codenames" -> "http://localhost:8004/Codenames.html?room=" <> room_name
-        "Homeworlds" -> "http://localhost:8005/Homeworlds.html?room=" <> room_name
-        "Ricochet Robots" -> "http://localhost:8003/Robots.html?room=" <> room_name
-        _ -> "http://localhost:8001/Lobby.html?room=" <> room_name
+        "Canoe" -> "./canoe/?room=" <> room_name
+        "Codenames" -> "./codenames/?room=" <> room_name
+        "Homeworlds" -> "./homeworlds/?room=" <> room_name
+        "Ricochet Robots" -> "./robots/?room=" <> room_name
+        _ -> "./lobby/?room=" <> room_name
       end
 
     response = Poison.encode!(%{action: "redirect", content: url})
     {:reply, {:text, response}, state}
   end
+
 
   @doc """
   Action: join_room

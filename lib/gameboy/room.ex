@@ -127,7 +127,6 @@ defmodule Gameboy.Room do
     room_name = Map.get(opts, :room_name, generate_name()) # TODO: check for duplicates, see generate_name for example
     game_name = Map.get(opts, :game_name, nil )
 
-    Logger.info("room name : [#{String.length(opts[:room_name])}] opts #{inspect opts}.")
     room_name =
       case String.length(opts[:room_name]) do
         rn when rn in 2..32 -> opts[:room_name]
@@ -171,15 +170,10 @@ defmodule Gameboy.Room do
       end
   end
 
-  
-
   # Return a list of all (publicly available) rooms
   def get_rooms() do
     room_pids = for {_, pid, _, _} <- DynamicSupervisor.which_children(:room_sup), do: pid
     rooms = Enum.map(room_pids, fn p -> GenServer.call(p, :get_meta_state) end)
-
-    Logger.info("Room: listing rooms. #{inspect rooms}")
-    
     {:ok, rooms}
   end
 
