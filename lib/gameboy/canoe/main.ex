@@ -47,7 +47,6 @@ defmodule Gameboy.Canoe.Main do
   @type canoe_t :: {{integer, integer}, {integer, integer}, {integer, integer}, {integer, integer}}
 
   def start_link(%{room_name: room_name} = opts) do
-    Logger.debug("Registering game with #{inspect via_tuple(room_name)}")
     GenServer.start_link(__MODULE__, opts, name: via_tuple(room_name))
   end
 
