@@ -134,7 +134,7 @@ defmodule Gameboy.SocketHandler do
   @impl true
   def websocket_handle({:json, "create_room", opts}, state) do # %{ room_name: room_name, game_name: game_name }
     Logger.debug("websocket_handle create_room with #{inspect opts}")
-    {room_name, game_name} = Room.new(opts |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)) # TO DO: should be able to use `, game_name: "Ricochet Robots"` here
+    {room_name, game_name} = Room.new(opts |> Map.new(fn {k, v} -> if is_atom(k) do {k, v} else {String.to_atom(k), v} end end))
     Logger.debug("CREATE ROOM: #{inspect(room_name)} #{inspect(game_name)}")
 
     url =

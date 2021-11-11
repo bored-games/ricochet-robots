@@ -124,12 +124,13 @@ defmodule Gameboy.Room do
   Create a new room and return its name.
   """
   def new(opts) do
+    Logger.info("AAAAAAAAAAAAAAAAAA")
     room_name = Map.get(opts, :room_name, generate_name()) # TODO: check for duplicates, see generate_name for example
     game_name = Map.get(opts, :game_name, nil )
 
     room_name =
-      case String.length(opts[:room_name]) do
-        rn when rn in 2..32 -> opts[:room_name]
+      case String.length(room_name) do
+        rn when rn in 2..32 -> room_name
         _ -> generate_name()
       end
     Logger.info("[#{room_name}] Opened new room with opts #{inspect opts}.")

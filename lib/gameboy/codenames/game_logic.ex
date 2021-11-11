@@ -10,19 +10,23 @@ defmodule Gameboy.Codenames.GameLogic do
 
 
   @doc """
-  Simply put a peg in the correct hole
+  Simply flip the correct card
   """
   @spec make_move([Main.card_t], integer, integer) :: :error_not_valid_move | {boolean, boolean, integer, integer, [Main.card_t]}
   def make_move(board, teamid, index) do
     case Enum.find(board, fn c -> c.id == index end ) do
       nil -> :error_not_valid_move
       target ->
-        continue_turn = teamid == target.team
-        assassin = target.team == -1
-        board = Enum.map(board, fn c -> if c.id == index do %{c | uncovered: true} else c end end)
-        red_remaining = Enum.count(board, fn c -> c.team == 1 and c.uncovered == false end)
-        blue_remaining = Enum.count(board, fn c -> c.team == 2 and c.uncovered == false end)
-        {continue_turn, assassin, red_remaining, blue_remaining, board}
+        if target.uncovered do
+          :error_not_valid_move
+        else
+          continue_turn = teamid == target.team
+          assassin = target.team == -1
+          board = Enum.map(board, fn c -> if c.id == index do %{c | uncovered: true} else c end end)
+          red_remaining = Enum.count(board, fn c -> c.team == 1 and c.uncovered == false end)
+          blue_remaining = Enum.count(board, fn c -> c.team == 2 and c.uncovered == false end)
+          {continue_turn, assassin, red_remaining, blue_remaining, board}
+        end
     end
   end
   
@@ -30,7 +34,7 @@ defmodule Gameboy.Codenames.GameLogic do
  
 
   @doc """
-  Return a randomized boundary board, its visual map, and corresponding goal positions.
+  Return the shuffled cards
   """
   @spec populate_board() :: {String.t(), [Main.card_t()], integer, integer, integer}
   def populate_board() do
