@@ -18,7 +18,7 @@ defmodule Gameboy.SocketHandler do
         }
 
   @behaviour :cowboy_websocket
-  @idle_timeout 90_000
+  @idle_timeout 55_000
 
   @doc """
   The first thing to happen for a new websocket connection.
