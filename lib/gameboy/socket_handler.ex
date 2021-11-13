@@ -26,7 +26,7 @@ defmodule Gameboy.SocketHandler do
   @impl true
   def init(request, _state) do
     state = %__MODULE__{
-      player_name: Player.new(self(), request.headers["sec-websocket-protocol"]),
+      player_name: Player.new(self(), "1234"), # 1234 = request.headers["sec-websocket-protocol"]
       room_name: nil
     }
 
