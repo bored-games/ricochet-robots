@@ -209,7 +209,6 @@ defmodule Gameboy.SocketHandler do
   end
 
 
-
   #  New chatline: need to send out new chatline to all users
   @impl true
   def websocket_handle({:json, "update_chat", content}, state) do
@@ -223,6 +222,7 @@ defmodule Gameboy.SocketHandler do
 
     {:reply, {:text, "success"}, state}
   end
+
 
   # TODO: Validate name against other users! Move to player.ex!
   # "update_user : need to send validated user info to 1 client and new scoreboard to all"
@@ -243,7 +243,6 @@ defmodule Gameboy.SocketHandler do
     {:reply, {:text, response}, state}
   end
 
-  
 
   # Handle arbitrary `game_action` calls. If a game exists, the content of the call is passed on to the game, and the response is sent back to the client.
   # - submit_movelist : simulate a set of Ricochet Robots moves
@@ -274,6 +273,7 @@ defmodule Gameboy.SocketHandler do
     {:reply, {:text, response}, state}
   end
 
+
   # "_ : handle all other JSON data with `action` as unknown."
   @impl true
   def websocket_handle({:json, action, _}, state) do
@@ -282,6 +282,7 @@ defmodule Gameboy.SocketHandler do
     response = Poison.encode!(%{action: "error", content: "Unsupported action."})
     {:reply, {:text, response}, state}
   end
+
 
   @doc """
   Forward Elixir messages to client.
@@ -297,13 +298,14 @@ defmodule Gameboy.SocketHandler do
     {:reply, {:text, info}, state}
   end
 
+
   # TODO: all
   @doc """
   Callback function for a terminated socket. Announce the player's parting, remove them from all their rooms, and broadcast the state change to all clients.
   """
   @impl true
-  def terminate(reason, _req, state) do
-    Logger.debug("Termination #{inspect(reason)} -  #{inspect(state)}")
+  def terminate(reason, req, state) do
+    Logger.debug("Termination #{inspect(reason)} -  #{inspect(req)} -  #{inspect(state)}")
     Room.system_chat(state.room_name, state.player_name <> " has left.")
     Room.remove_player(state.room_name, state.player_name)
     Room.broadcast_scoreboard(state.room_name)
