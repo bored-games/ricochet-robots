@@ -18,7 +18,7 @@ defmodule Gameboy.SocketHandler do
         }
 
   @behaviour :cowboy_websocket
-  @idle_timeout 55_000
+  @idle_timeout 1_055_000
 
   @doc """
   The first thing to happen for a new websocket connection.
@@ -56,12 +56,12 @@ defmodule Gameboy.SocketHandler do
   end
 
   # TO DO: If a player joins a room but is expecting a different game.. problem.
+  # This is where players should be authenticated.
   # Happens after init()
   @impl true
   def websocket_init({room_name, game_name, state}) do
 
     send(self(), get_player(state.player_name))
-
 
     case websocket_handle({:json, "join_room", room_name}, state) do
       {:reply, {:text, reply}, _state} -> send(self(), reply)
@@ -80,7 +80,7 @@ defmodule Gameboy.SocketHandler do
   end
 
   @doc """
-  Happens after init() if there was no requested room
+  Happens after init() if there was no requested room.. This is where players should be authenticated.
   """
   @impl true
   def websocket_init(state) do
