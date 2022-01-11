@@ -78,8 +78,9 @@ defmodule Gameboy.Room do
           players: %{
             required(String.t()) => %{
               score: integer,
-              is_admin: boolean,
-              is_muted: boolean,
+              is_admin: boolean(),
+              is_muted: boolean(),
+              is_bot: boolean(),
               team: integer
             }
           },
@@ -124,7 +125,6 @@ defmodule Gameboy.Room do
   Create a new room and return its name.
   """
   def new(opts) do
-    Logger.info("AAAAAAAAAAAAAAAAAA")
     room_name = Map.get(opts, :room_name, generate_name()) # TODO: check for duplicates, see generate_name for example
     game_name = Map.get(opts, :game_name, nil )
 
@@ -137,7 +137,7 @@ defmodule Gameboy.Room do
 
     max_players =
       case Map.get(opts, :player_limit, @default_player_limit) do
-        nil -> @default_player_limt
+        nil -> @default_player_limit
         n when n in 1..32 -> n
         n when is_integer(n) -> @default_player_limit
         str -> (case Integer.parse(str) do
@@ -192,7 +192,7 @@ defmodule Gameboy.Room do
   end
 
   # Add player to room.
-  @spec add_player(String.t(), integer) :: :ok | :error_nonexistant_room | :error_max_players | :error_finding_player
+  @spec add_player(String.t(), String.t()) :: :ok | :error_nonexistant_room | :error_max_players | :error_finding_player
   def add_player(room_name, player_name) do
     Logger.info("[Room.add_player] Adding `#{player_name}` to [#{inspect room_name}] using #{inspect via_tuple(room_name)}")
     case GenServer.whereis(via_tuple(room_name)) do
@@ -204,7 +204,20 @@ defmodule Gameboy.Room do
         end
     end
   end
-
+  
+  # Add bot to room.
+  @spec add_bot(String.t(), String.t(), String.t()) :: :ok | :error_nonexistant_room | :error_max_players | :error_creating_bot
+  def add_bot(room_name, bot_name, team_id) do
+    Logger.info("[Room.add_bot] Adding `#{bot_name}` to [#{inspect room_name}] using #{inspect via_tuple(room_name)}")
+    case GenServer.whereis(via_tuple(room_name)) do
+      nil -> :error_nonexistant_room
+      _proc -> 
+        case GenServer.call(via_tuple(room_name), {:add_bot, bot_name, team_id}) do
+          {:ok, _room} -> :ok
+          error -> error
+        end
+    end
+  end
   
   # Welcome player to room, and call the game_module to welcome player to the game.
   @spec welcome_player(String.t(), integer) :: :ok | :error
@@ -337,7 +350,7 @@ defmodule Gameboy.Room do
   @impl true
   def handle_call({:add_player, player_name}, _from, state) do
 
-    if map_size(state.players) == state.player_limit do
+    if map_size(state.players) >= state.player_limit do
       Logger.debug("Room at player limit (#{state.player_limit}), rejecting player \"#{player_name}\".")
       {:reply, :error_max_players, state}
     else
@@ -347,7 +360,7 @@ defmodule Gameboy.Room do
           
           # TO DO: what if player is already in room??
 
-          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{team: 0, score: 0, color: player.color, is_admin: false, is_muted: false})} # TO DO!!!
+          state = %__MODULE__{state | players: Map.put_new(state.players, player.name, %{team: 0, score: 0, color: player.color, is_admin: false, is_muted: false, is_bot: false})} # TO DO!!!
 
           Logger.info("[#{state.name} (#{inspect map_size(state.players)}/#{state.player_limit})] Player \"#{player.name}\" joined.")
           system_chat(state.name, "#{player.name} joined the room.")
@@ -360,6 +373,33 @@ defmodule Gameboy.Room do
       end
     end
   end
+  
+  @doc """
+  Add a bot to a room. Check the player limit; add the bot to the room.
+  """
+  @impl true
+  def handle_call({:add_bot, bot_name, team_id}, _from, state) do
+
+    if map_size(state.players) >= state.player_limit do
+      Logger.debug("Room at player limit (#{state.player_limit}), rejecting bot \"#{bot_name}\".")
+      {:reply, :error_max_players, state}
+    else
+      # Make sure player really exists.
+      case Player.create_bot(bot_name) do
+        {:ok, bot} ->
+          state = %__MODULE__{state | players: Map.put_new(state.players, bot.name, %{team: team_id, score: 0, color: bot.color, is_admin: false, is_muted: false, is_bot: true})}
+
+          Logger.info("[#{state.name} (#{inspect map_size(state.players)}/#{state.player_limit})] Bot \"#{bot.name}\" joined.")
+          system_chat(state.name, "#{bot.name} added to the room.")
+
+          {:reply, {:ok, state}, state}
+
+        :error ->
+          Logger.debug("Bot \"#{bot_name}\" could not be created.")
+          {:reply, :error_creating_bot, state}
+      end
+    end
+  end
 
   
   # Get a player and their status within a room.
@@ -369,7 +409,7 @@ defmodule Gameboy.Room do
       {:ok, player} ->
         case Map.fetch(state.players, player_name) do
           {:ok, room_player} ->
-            {:reply, {:ok, Player.to_map(player, room_player.team, room_player.score, room_player.is_admin, room_player.is_muted)}, state}
+            {:reply, {:ok, Player.to_map(player, room_player.team, room_player.score, room_player.is_admin, room_player.is_muted, room_player.is_bot)}, state}
           :error ->
             {:reply, :error, state}
         end
@@ -407,7 +447,7 @@ defmodule Gameboy.Room do
   # Set a player on a team
   @impl true
   def handle_call({:set_team, player_name, team}, _from, state) do
-    Logger.debug("Gotta set the team : #{inspect team}")
+    Logger.debug("Setting #{inspect player_name} to team #{inspect team}")
     # TO DO: handle error...
     new_state = try do
       update_in(state.players[player_name].team, &(&1 -  &1 + team))
@@ -465,7 +505,7 @@ defmodule Gameboy.Room do
             action: "player_chat_new_message",
             content: %{
               room_name: state.name,
-              user: Player.to_map(player, 0, 0, false, false),
+              user: Player.to_map(player, 0, 0, false, false, false),
               message: chat_message,
               # timestamp: :calendar.universal_time(), # doesn't encode with poison...
                timestamp: DateTime.utc_now()
@@ -549,14 +589,18 @@ defmodule Gameboy.Room do
   def handle_cast(:broadcast_scoreboard, state) do
        
     current_players = Enum.map(state.players, fn {k, v} ->
-      case Player.fetch(k) do
-        {:ok, player} -> {k, Player.to_map(player, v.team, v.score, v.is_admin, v.is_muted)}
-        :error -> {k, v}
+      if v.is_bot do
+        {k, Player.bot_to_map(k, v.color, v.team, v.score, v.is_admin, v.is_muted, v.is_bot)}
+      else
+        case Player.fetch(k) do
+          {:ok, player} -> {k, Player.to_map(player, v.team, v.score, v.is_admin, v.is_muted, v.is_bot)}
+          :error -> {k, v}
+        end
       end
     end)
     |> Enum.into(%{})
 
-    Logger.debug("[#{state.name}] Broadcast scoreboard to #{map_size current_players} players")
+    # Logger.debug("[#{state.name}] Broadcast scoreboard to #{map_size current_players} players")
 
     Poison.encode!(%{action: "update_scoreboard", content: current_players})
     |> broadcast_to_players(state.name)

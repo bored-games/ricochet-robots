@@ -22,7 +22,7 @@ defmodule Gameboy.Player do
           nickname: String.t(),
           private_key: nil | String.t(),
           color: nil | String.t(),
-          socket_pid: pid(),
+          socket_pid: nil | pid(),
           rooms: MapSet.t()
         }
 
@@ -161,6 +161,11 @@ defmodule Gameboy.Player do
     player_name
   end
 
+  @spec create_bot(String.t()) :: {:ok, __MODULE__.t()} | :error
+  def create_bot(bot_name) do
+    {:ok, %__MODULE__{ name: bot_name, nickname: bot_name, private_key: nil, color: "#ff0001", socket_pid: nil }}
+  end
+
   @spec fetch(String.t()) :: {:ok, __MODULE__.t()} | :error
   def fetch(player_name) do
     # Logger.debug("The PlayerRegister has: #{inspect(Registry.count(Registry.PlayerRegistry))} players.")
@@ -179,9 +184,7 @@ defmodule Gameboy.Player do
 
   # @spec update(String.t(), ) :: String.t()
   def update(player_name, new_info) do
-    
     # {:ok, player} = Player.fetch(player_name)
-
     GenServer.call(via_tuple(player_name), {:update_player, new_info})
   end
   
@@ -234,9 +237,15 @@ defmodule Gameboy.Player do
 
   
   # Returns a JSON encodable map.
- # @spec to_map(__MODULE__.t()) :: %{username: String.t(), color: String.t(), score: int, is_admin: bool, is_muted: bool}
-  def to_map(player, team, score, is_admin, is_muted) do
-    %{ username: player.name, nickname: player.nickname, team: team, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted }
+ # @spec to_map(__MODULE__.t()) :: %{username: String.t(), color: String.t(), score: int, is_admin: bool, is_muted: bool, is_bot: bool}
+  def to_map(player, team, score, is_admin, is_muted, is_bot) do
+    %{ username: player.name, nickname: player.nickname, team: team, color: player.color, score: score, is_admin: is_admin, is_muted: is_muted, is_bot: is_bot }
+  end
+  
+  # Returns a JSON encodable map.
+ # @spec bot_to_map(__MODULE__.t()) ::
+  def bot_to_map(bot, color, team, score, is_admin, is_muted, is_bot) do
+    %{ username: bot, nickname: bot, team: team, color: color, score: score, is_admin: is_admin, is_muted: is_muted, is_bot: is_bot }
   end
 
 

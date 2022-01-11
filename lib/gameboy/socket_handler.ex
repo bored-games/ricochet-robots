@@ -95,7 +95,7 @@ defmodule Gameboy.SocketHandler do
   """
   def get_player(player_name) do
     case Player.fetch(player_name) do
-      {:ok, player} -> Poison.encode!(%{action: "update_user", content: Player.to_map(player, 0, 0, false, false) })
+      {:ok, player} -> Poison.encode!(%{action: "update_user", content: Player.to_map(player, 0, 0, false, false, false) })
       error -> Logger.info("get_player error: #{inspect error}")
     end
   end
@@ -235,9 +235,9 @@ defmodule Gameboy.SocketHandler do
     # send scoreboard to all
     Room.broadcast_scoreboard(state.room_name)
 
-    # send client their new user info: TO DO: team, score, isadmin, ismuted
+    # send client their new user info: TO DO: team, score, isadmin, ismuted, isbot
     {:ok, player} = Player.fetch(state.player_name)    
-    user_map = Player.to_map(player, 0, 0, false, false)
+    user_map = Player.to_map(player, 0, 0, false, false, false)
     
     response = Poison.encode!(%{content: user_map, action: "update_user"})
     {:reply, {:text, response}, state}

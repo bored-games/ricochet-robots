@@ -38,7 +38,8 @@ defmodule Gameboy.MixProject do
       {:plug_cowboy, "~> 2.0"},
       {:poison, "~> 3.1"},
       {:ecto_sql, "~> 3.0"},
-      {:postgrex, ">= 0.0.0"}
+      {:postgrex, ">= 0.0.0"},
+      {:export, "~> 0.1.1"}
     ]
   end
 end

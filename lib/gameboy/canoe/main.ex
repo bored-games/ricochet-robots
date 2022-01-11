@@ -38,8 +38,8 @@ defmodule Gameboy.Canoe.Main do
           setting_countdown: integer,
           current_countdown: integer,
           current_timer: integer,
-          red: String.t(),
-          blue: String.t(),
+          red: String.t() | nil | :bot,
+          blue: String.t() | nil | :bot,
           ready_for_new_game: %{red: boolean, blue: boolean}
         }
         
@@ -113,6 +113,13 @@ defmodule Gameboy.Canoe.Main do
       "submit_movelist" -> 
         case GenServer.call(via_tuple(socket_state.room_name), {:make_move, socket_state.player_name, content}) do
           :ok -> Poison.encode!(%{content: "ok", action: "update_board"})
+          :make_bot_move_now ->
+            case GenServer.call(via_tuple(socket_state.room_name), {:call_python_bot}) do
+              :ok ->
+                Poison.encode!(%{content: "ok", action: "update_board"})
+              _ ->
+                Poison.encode!(%{content: "The bot FAILED to move correctly.", action: "update_flash_msg"})
+            end
           {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
         end
       "resign" -> 
@@ -128,6 +135,18 @@ defmodule Gameboy.Canoe.Main do
       "set_team" -> # TODO: logic/security here... only allow team changes when appropriate...?
         case GenServer.call(via_tuple(socket_state.room_name), {:set_team, socket_state.player_name, content}) do
           :ok -> Poison.encode!(%{content: "ok", action: "update_teams"})
+          {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
+        end
+      "add_bot" -> # TODO: security
+        case GenServer.call(via_tuple(socket_state.room_name), {:add_bot, content}, 15000) do
+          :ok -> Poison.encode!(%{content: "ok", action: "update_teams"})
+          :make_bot_move_now ->
+            case GenServer.call(via_tuple(socket_state.room_name), {:call_python_bot}, 15000) do
+              :ok ->
+                Poison.encode!(%{content: "ok", action: "update_board"})
+              _ ->
+                Poison.encode!(%{content: "The bot FAILED to move correctly.", action: "update_flash_msg"})
+            end
           {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
         end
       _ -> :error_unknown_game_action
@@ -196,7 +215,7 @@ defmodule Gameboy.Canoe.Main do
       {:ok, room} -> 
         case Map.fetch(room.players, player_name) do
           {:ok, room_player} ->
-            Logger.debug("MAKIN MOVES #{inspect player_name} on team #{inspect state.current_team} #{inspect state.current_team} #{inspect [x, y]}")
+            Logger.debug("[Canoe] Team #{inspect state.current_team} (#{inspect player_name}) selects #{inspect [x, y]}")
             
             cond do
               state.game_over ->
@@ -219,18 +238,17 @@ defmodule Gameboy.Canoe.Main do
                         1 -> {MapSet.put(state.selected_reds, {x, y}), state.complete_red_canoes, "Red"}
                         2 -> {MapSet.put(state.selected_blues, {x, y}), state.complete_blue_canoes, "Blue"}
                       end
-                    
+
                     {count_all, count_new, complete_canoes} = GameLogic.check_solution(complete_canoes, selected_pieces, {x, y})
   
-                    state =
+                    {status, state} =
                       if count_all >= 2 do
                           message = Poison.encode!(%{action: "game_over", content: "#{team_name} wins!"})
                           GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
-  
                           Room.add_points(state.room_name, player_name, 1)
                           Room.broadcast_scoreboard(state.room_name)
   
-                          %{state | game_over: true, board: new_board }
+                          {:ok, %{state | game_over: true, board: new_board}}
                       else 
                         if count_new >= 1 do
                           message = Poison.encode!(%{action: "update_flash_msg", content: "#{team_name} found a new canoe!"})
@@ -244,16 +262,111 @@ defmodule Gameboy.Canoe.Main do
                           
                         state = %{state | board: new_board, current_team: 3-state.current_team }
                         broadcast_turn(state)
-                        state
+                        status =
+                          if state.current_team == 1 do
+                            if state.red == :bot do
+                              :make_bot_move_now
+                            else
+                              :ok
+                            end
+                          else
+                            if state.blue == :bot do
+                              :make_bot_move_now
+                            else
+                              :ok
+                            end
+                        end
+                        {status, state}
                       end
   
+                    # if game is over, bots need to ready for new game
+                    state = 
+                      if state.game_over do
+                        if state.red == :bot do
+                          Logger.debug("setting red ready")
+                          %{ state | ready_for_new_game: %{ state.ready_for_new_game | red: true }}
+                        end
+                        if state.blue == :bot do
+                          Logger.debug("setting blue ready")
+                          %{ state | ready_for_new_game: %{ state.ready_for_new_game | blue: true }}
+                        end
+                      else
+                        state
+                      end
+
                     broadcast_board(state)
-                    {:reply, :ok, state}
+                    {:reply, status, state}
                   end
             end
             
           :error ->
             {:reply, {:error, "Error finding #{inspect player_name} in #{inspect state.room_name}"}, state}
+        end
+
+      _ ->
+        Logger.debug("Could not find room #{inspect state.room_name}")
+        {:reply, {:error, "Unknown room"}, state}
+    end
+
+  end
+
+
+  @impl true
+  def handle_call({:call_python_bot}, _from, state) do
+    case Room.fetch(state.room_name) do
+      {:ok, _room} ->
+        {x, y} = Gameboy.PyWorker.canoe_ai(MapSet.to_list(state.selected_reds), MapSet.to_list(state.selected_blues), state.current_team)
+        Logger.debug("[Canoe] Team #{inspect state.current_team} bot chooses: #{inspect [x, y]}")
+
+        cond do
+          state.game_over ->
+            {:reply, {:error, "Select New Game to continue."}, state} # TODO: bot should automatically select new game...
+
+          true ->
+            case GameLogic.make_move(state.board, state.current_team, {x, y}) do
+              :error_not_valid_move ->
+                {:reply, {:error, "Invalid move!"}, state}
+
+              new_board ->
+                message = Poison.encode!(%{action: "update_last_move", content: [x, y]})
+                GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
+                
+                {selected_pieces, complete_canoes, team_name} = 
+                  case state.current_team do
+                    1 -> {MapSet.put(state.selected_reds, {x, y}), state.complete_red_canoes, "Red"}
+                    2 -> {MapSet.put(state.selected_blues, {x, y}), state.complete_blue_canoes, "Blue"}
+                  end
+
+                {count_all, count_new, complete_canoes} = GameLogic.check_solution(complete_canoes, selected_pieces, {x, y})
+
+                {status, state} =
+                  if count_all >= 2 do
+                      message = Poison.encode!(%{action: "game_over", content: "#{team_name} wins!"})
+                      GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
+
+                      # Room.add_points(state.room_name, player_name, 1) # maybe add points to bot
+                      Room.broadcast_scoreboard(state.room_name)
+
+                      {:ok, %{state | game_over: true, board: new_board}}
+                  else 
+                    if count_new >= 1 do
+                      message = Poison.encode!(%{action: "update_flash_msg", content: "#{team_name} found a new canoe!"})
+                      GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
+                    end
+                    state =
+                      case state.current_team do
+                        1 -> %{state | selected_reds: selected_pieces, complete_red_canoes: complete_canoes}
+                        2 -> %{state | selected_blues: selected_pieces, complete_blue_canoes: complete_canoes}
+                      end
+                      
+                    state = %{state | board: new_board, current_team: 3-state.current_team }
+                    broadcast_turn(state)
+                    {:ok, state}
+                  end
+
+                broadcast_board(state)
+                {:reply, status, state}
+              end
         end
 
 
@@ -265,12 +378,9 @@ defmodule Gameboy.Canoe.Main do
 
   end
 
-  
+
   @impl true
   def handle_call({:set_team, player, teamid}, _from, state) do
-
-    Logger.debug("SETTING TEAM #{inspect player} #{inspect teamid}")
-
     case Room.set_team(state.room_name, player, teamid) do
       :ok -> 
         {red, blue} =
@@ -289,8 +399,32 @@ defmodule Gameboy.Canoe.Main do
         {:reply, {:error, "Unable to set team"}, state}
     end
   end
-
   
+  @impl true
+  def handle_call({:add_bot, team_id}, _from, state) do
+    case Room.add_bot(state.room_name, "canoebot", team_id) do
+      :ok ->
+        _response = Gameboy.PyWorker.init_canoe_ai()
+        state =
+          case team_id do
+            1 -> %{state | red: :bot }
+            2 -> %{state | blue: :bot }
+            _ -> state
+          end
+      
+        broadcast_turn(state)
+        Room.broadcast_scoreboard(state.room_name)
+        if state.current_team == team_id do
+          {:reply, :make_bot_move_now, state}
+        else
+          {:reply, :ok, state}
+        end
+      _ ->
+        Room.broadcast_scoreboard(state.room_name)
+        {:reply, {:error, "Unable to create bot"}, state}
+    end
+  end
+
   
   @impl true
   def handle_call({:resign, player}, _from, state) do
@@ -321,7 +455,7 @@ defmodule Gameboy.Canoe.Main do
   @impl true
   def handle_call({:new_game, player}, _from, state) do
 
-    Logger.debug("NEW GAME INIT BY #{inspect player}")
+    Logger.debug("[Canoe] #{inspect player} is ready for a new game")
 
     cond do
       player != state.red and player != state.blue ->  

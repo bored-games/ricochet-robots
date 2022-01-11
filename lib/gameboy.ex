@@ -35,6 +35,8 @@ defmodule Gameboy do
       Supervisor.child_spec({Gameboy.RoomSupervisor, []}, id: Gameboy.RoomSupervisor),
       Supervisor.child_spec({Gameboy.PlayerSupervisor, []}, id: Gameboy.PlayerSupervisor),
       Supervisor.child_spec({Gameboy.GameSupervisor, []}, id: Gameboy.GameSupervisor),
+      # Supervisor.child_spec({Gameboy.PyWorker, []}, id: Gameboy.PyWorker),
+      Gameboy.PyWorker,
       %{id: :room1, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Robot City", game_name: "Ricochet Robots"}, :permanent]}, restart: :permanent},
       %{id: :room2, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "Canoe for Two", game_name: "Canoe", player_limit: 2}, :permanent]}, restart: :permanent},
       %{id: :room3, start: {Gameboy.RoomSupervisor, :start_child, [%{room_name: "I Spy", game_name: "Codenames", player_limit: 10}, :permanent]}, restart: :permanent},
@@ -44,6 +46,10 @@ defmodule Gameboy do
 
     opts = [strategy: :one_for_one, name: Gameboy.Application]
     Supervisor.start_link(children, opts)
+  end
+
+  def hello() do
+    :world
   end
 
   def dispatch do

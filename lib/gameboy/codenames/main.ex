@@ -132,9 +132,9 @@ defmodule Gameboy.Codenames.Main do
           :ok -> Poison.encode!(%{content: "ok", action: "update_board"})
           {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
         end
-      "pass" -> 
+      "pass_turn" -> 
         case GenServer.call(via_tuple(socket_state.room_name), {:pass, socket_state.player_name}) do
-          :ok -> Poison.encode!(%{content: "ok", action: "resign"})
+          :ok -> :noreply
           {:error, err_msg} -> Poison.encode!(%{content: err_msg, action: "update_flash_msg"})
         end
       "set_spymaster" -> 
@@ -179,7 +179,7 @@ defmodule Gameboy.Codenames.Main do
 
   def broadcast_board(state) do
     board = for %{id: i, word: w, uncovered: u, team: t} <- state.board, do: %{id: i, word: w, team: if u do t else nil end}
-    content = %{board: board, red_remaining: state.red_remaining, blue_remaining: state.blue_remaining}
+    content = %{password: state.password, board: board, red_remaining: state.red_remaining, blue_remaining: state.blue_remaining}
     message = Poison.encode!(%{action: "update_board", content: content})
     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
@@ -204,13 +204,13 @@ defmodule Gameboy.Codenames.Main do
           "Select New Game to continue."
 
         state.current_team == 1 ->
-          "Red team's turn"
+          "Clue: #{state.clue}"
       
         state.current_team == 2 ->
-          "Blue team's turn"
+          "Clue: #{state.clue}"
 
         true ->
-          ""
+          "Error"
       end
 
     status_map = %{turn: state.current_team == 1, text: text, clue: state.clue, remaining_guesses: state.remaining_guesses}
@@ -246,10 +246,15 @@ defmodule Gameboy.Codenames.Main do
 
       true ->
         case content do
-          %{"count" => c, "word" => w} ->
-            case Integer.parse(c) do
+          %{"guesses" => g, "clue" => c} ->
+            case Integer.parse(g) do
               {rg, _} ->
-                state = %{state | clue: w, remaining_guesses: rg+1}
+                state = %{state | clue: c, remaining_guesses: rg+1}
+                broadcast_turn(state)
+                {:reply, :ok, state}
+
+              {0, _} ->
+                state = %{state | clue: c, remaining_guesses: 999}
                 broadcast_turn(state)
                 {:reply, :ok, state}
               
