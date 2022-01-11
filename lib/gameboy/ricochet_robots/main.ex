@@ -552,7 +552,7 @@ defmodule Gameboy.RicochetRobots.Main do
                 " This was the optimal solution!"
               solver_moves > best_solution_moves ->
                 " You beat the solver's #{solver_robots}-robot, #{solver_moves}-move solution! Incredible."
-              solver_moves == best_solution_moves and solver_robots > best_solution_robots ->
+              solver_moves == best_solution_moves and solver_robots < best_solution_robots ->
                 " You beat the solver's #{solver_robots}-robot, #{solver_moves}-move solution! Incredible."
               true ->
                 " The optimal solution was #{solver_robots}-robots, #{solver_moves}-moves!"
