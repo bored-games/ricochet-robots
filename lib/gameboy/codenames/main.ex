@@ -213,7 +213,7 @@ defmodule Gameboy.Codenames.Main do
           "Error"
       end
 
-    status_map = %{turn: state.current_team == 1, text: text, clue: state.clue, remaining_guesses: state.remaining_guesses}
+    status_map = %{game_over: state.game_over, turn: state.current_team == 1, text: text, clue: state.clue, remaining_guesses: state.remaining_guesses}
     message = Poison.encode!(%{action: "update_status", content: status_map})
     GenServer.cast(via_tuple(state.room_name), {:broadcast_to_players, message})
   end
@@ -244,27 +244,32 @@ defmodule Gameboy.Codenames.Main do
       state.clue != nil ->  
         {:reply, {:error, "A clue has already been sent."}, state}
 
-      true ->
+      (state.current_team == 1 and player == state.red_spymaster) or (state.current_team == 2 and player == state.blue_spymaster) ->
         case content do
           %{"guesses" => g, "clue" => c} ->
-            case Integer.parse(g) do
-              {rg, _} ->
-                state = %{state | clue: c, remaining_guesses: rg+1}
+            test_g = Integer.parse(g)
+            cond do
+              g == "infinity" ->
+                state = %{state | clue: c, remaining_guesses: 9899}
                 broadcast_turn(state)
                 {:reply, :ok, state}
 
-              {0, _} ->
-                state = %{state | clue: c, remaining_guesses: 999}
-                broadcast_turn(state)
-                {:reply, :ok, state}
-              
-              _ ->
+              test_g == :error ->
                 {:reply, {:error, "Invalid number of guesses!"}, state}
-              end
 
+              true ->
+                {rg, _} = test_g
+                remaining_guesses = if rg == 0 do 999 else rg + 1 end
+                state = %{state | clue: c, remaining_guesses: remaining_guesses}
+                broadcast_turn(state)
+                {:reply, :ok, state}
+              end
           _ -> 
             {:reply, {:error, "Invalid clue!"}, state}
         end
+
+      true ->  
+        {:reply, {:error, "It's not your turn!"}, state}
 
       end
   end
