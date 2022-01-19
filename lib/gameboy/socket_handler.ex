@@ -18,7 +18,7 @@ defmodule Gameboy.SocketHandler do
         }
 
   @behaviour :cowboy_websocket
-  @idle_timeout 1_055_000
+  @idle_timeout 115_000
 
   @doc """
   The first thing to happen for a new websocket connection.
@@ -29,6 +29,8 @@ defmodule Gameboy.SocketHandler do
       player_name: Player.new(self(), "1234"), # 1234 = request.headers["sec-websocket-protocol"]
       room_name: nil
     }
+
+    Logger.debug("Request: #{inspect request}")
 
     case request.path_info do
       [ "robots" | [room_name]] ->
