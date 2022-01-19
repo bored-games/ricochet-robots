@@ -187,13 +187,6 @@ defmodule Gameboy.Codenames.Main do
   def broadcast_turn(state) do
     text = 
       cond do
-        state.clue == nil -> 
-          if state.current_team == 1 do
-            "Waiting for red Spymaster"
-          else
-            "Waiting for blue Spymaster"
-          end
-
         state.game_over and state.winner == 1 ->
           "Red has won the game!"
 
@@ -201,7 +194,14 @@ defmodule Gameboy.Codenames.Main do
           "Blue has won the game!"
 
         state.game_over ->
-          "Select New Game to continue."
+          "Select New Game to play again."
+
+        state.clue == nil -> 
+          if state.current_team == 1 do
+            "Waiting for red Spymaster"
+          else
+            "Waiting for blue Spymaster"
+          end
 
         state.current_team == 1 ->
           "Clue: #{state.clue}"
@@ -281,9 +281,9 @@ defmodule Gameboy.Codenames.Main do
       {:ok, room} -> 
         case Map.fetch(room.players, player_name) do
           {:ok, room_player} ->
-            Logger.debug("MAKIN MOVES #{inspect player_name} on team #{inspect state.current_team} #{inspect index} #{inspect override}")
+            Logger.debug("UNCOVERING CARD: #{inspect player_name} on team #{inspect state.current_team} #{inspect index} #{inspect override}")
             
-            if (override and state.allow_overrides) do
+            if (override and state.allow_overrides) or state.game_over do
               case GameLogic.make_move(state.board, state.current_team, index) do
                 :error_not_valid_move ->
                   {:reply, {:error, "Invalid attempt!"}, state}
@@ -324,9 +324,6 @@ defmodule Gameboy.Codenames.Main do
               end
             else
               cond do
-                state.game_over -> # TO DO: game is ovr but player wants to show cards 1 at a time...
-                  {:reply, {:error, "Select New Game to continue."}, state}
-
                 room_player.team < 1 or room_player.team > 2 ->
                   {:reply, {:error, "You are not on a team!"}, state}
 
