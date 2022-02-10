@@ -17,8 +17,8 @@ defmodule Gameboy.RicochetRobots.Main do
             visual_board: nil,
             robots: [],
             goals: [],
-            # Time in seconds after a solution is found (60, 6 for testing)
-            setting_countdown: 6,
+            # Time in seconds after a solution is found (60, 10 for testing)
+            setting_countdown: 10,
             # 1-robot solutions below this value should not count
             setting_min_moves: 3,
             # new board generated ever `n` many puzzles
@@ -26,7 +26,7 @@ defmodule Gameboy.RicochetRobots.Main do
             # new board generated after this many more puzzles
             current_puzzles_until_new: 8,
             # current countdown: at 0, best solution wins
-            current_countdown: 6,
+            current_countdown: 10,
             # current timer
             current_timer: 0,
             # boolean: has solution been found
