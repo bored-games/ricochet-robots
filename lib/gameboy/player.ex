@@ -55,6 +55,7 @@ defmodule Gameboy.Player do
     "Beta",
     "Gamma",
     "Proto",
+    "Drone",
     "R2"
   ]
 
@@ -83,15 +84,15 @@ defmodule Gameboy.Player do
   ]
 
   @nickname_word_list_3 [
-    "69",
-    "420",
+    "99",
     "XxX",
     "2001",
     "borg",
     "9000",
     "100",
     "2020",
-    "",
+    "oid",
+    "☺",
     "",
     "",
     "",
